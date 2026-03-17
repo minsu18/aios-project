@@ -5,4 +5,5 @@ members = [
     "hal",
     "ai-core",
     "boot",
+    "drivers",
 ]

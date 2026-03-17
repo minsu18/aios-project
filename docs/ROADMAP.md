@@ -1,20 +1,26 @@
 # AIOS Roadmap
 
-## Phase 1 (current)
+## Phase 1 ✅
 - [x] Project structure
-- [x] AI core prototype (Python/TS)
+- [x] AI core prototype (TypeScript)
 - [x] Skill runtime prototype
 - [x] MCP-compatible spec
+- [x] Skill tool invocation (invokeTool, example.get_time, example.echo)
+- [x] Pluggable inference backend (placeholder; openai/anthropic hooks ready)
+- [x] Multimodal input API (text; voice/image/video placeholders)
+- [x] App Store CLI (install, remove skills)
 
-## Phase 2
-- [x] x86-64 or ARM minimal kernel
-- [x] HAL implementation
+## Phase 2 ✅
+- [x] x86-64 minimal kernel
+- [x] HAL implementation (interface)
 - [x] QEMU boot
+- [x] Driver structure (camera, audio, comms traits)
 
 ## Phase 3
 - [ ] Bare-metal boot
-- [ ] Drivers: camera, audio, comms
-- [ ] Multimodal I/O pipeline
+- [ ] Drivers: camera, audio, comms (real hardware bindings)
+- [ ] Multimodal I/O pipeline (STT, vision)
 
 ## Phase 4
-- [ ] App Store — browse, install, manage AI add-ons
+- [x] App Store — install, remove skills
+- [ ] App Store — browse (registry), manage (update, list remote)

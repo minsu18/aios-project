@@ -5,8 +5,11 @@ TypeScript prototype for AI core and skill runtime. Runs on host for validation 
 ## Features
 
 - **AI Core**: Text input → intent inference → routing (on-device vs cloud)
+- **Skill Tool Invocation**: Invokes MCP tools (e.g. example.get_time, example.echo)
+- **Pluggable Inference**: `AIOS_INFERENCE=placeholder|openai|anthropic` (openai/anthropic hooks ready)
+- **Multimodal API**: `processMultimodal()` accepts text/voice/image/video (voice/image/video placeholders)
 - **Skill Runtime**: Load SKILL.md from `~/.aios/skills/` or `.aios/skills/`
-- **MCP-Compatible Tools**: Skills expose tools in MCP format; see [docs/MCP_SPEC.md](../docs/MCP_SPEC.md)
+- **App Store CLI**: Install and remove skills
 
 ## Usage
 
@@ -14,14 +17,21 @@ TypeScript prototype for AI core and skill runtime. Runs on host for validation 
 npm install
 npm run build
 
-# Demo prompts (time, greeting, weather, complex query)
+# Demo prompts (time, greeting, echo, weather, complex query)
 npm run demo
 
 # List loaded skills and tools
 npm run skills
 
+# Install skill from path
+node dist/index.js install /path/to/skill-dir
+
+# Remove installed skill
+node dist/index.js remove <skill-name>
+
 # Single prompt (JSON output)
 node dist/index.js "What time is it?"
+node dist/index.js "echo Hello from skill!"
 ```
 
 ## Example Skill

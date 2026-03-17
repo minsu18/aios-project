@@ -1,10 +1,11 @@
 # AIOS Drivers
 
-Hardware drivers:
-- Memory
-- CPU/GPU
-- Comms (WiFi, cellular, BT)
-- Camera
-- Speaker, microphone
+Hardware driver modules implementing the `Driver` trait:
 
-Planned for Phase 2–3.
+| Driver | Status | Description |
+|--------|--------|-------------|
+| camera | Stub | Image and video capture |
+| audio | Stub | Speaker output, microphone input |
+| comms | Stub | WiFi, cellular, Bluetooth |
+
+Phase 2: Structure and trait. Phase 3: Real hardware bindings.

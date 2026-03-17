@@ -4,12 +4,14 @@
  * - Loads skills from ~/.aios/skills/ or .aios/skills/
  * - Parses SKILL.md (YAML frontmatter + markdown)
  * - Exposes MCP-compatible tool list
+ * - Invokes tools via built-in handlers or skill's handlers.js
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
-import type { Skill, SkillMeta, MCPTool } from "./types.js";
+import { pathToFileURL } from "node:url";
+import type { Skill, SkillMeta, MCPTool, ToolHandler } from "./types.js";
 
 const SKILL_FILENAME = "SKILL.md";
 
@@ -131,4 +133,74 @@ export function listTools(skills: Skill[]): MCPTool[] {
     }
   }
   return tools;
+}
+
+/** Built-in tool handlers (used when skill has no handlers.js) */
+const BUILTIN_HANDLERS: Record<string, ToolHandler> = {
+  "example.get_time": (args) => {
+    const tz = (args.timezone as string) || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return new Date().toLocaleTimeString(undefined, { timeZone: tz });
+  },
+  "example.echo": (args) => {
+    return (args.text as string) ?? "";
+  },
+};
+
+/** Find skill and tool by full name (e.g. "example.get_time") */
+function resolveTool(skills: Skill[], fullName: string): { skill: Skill; tool: MCPTool } | null {
+  for (const skill of skills) {
+    for (const tool of skill.meta.tools ?? []) {
+      if (`${skill.meta.name}.${tool.name}` === fullName) {
+        return { skill, tool };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Invoke an MCP tool by full name.
+ * Tries: built-in handlers -> skill's handlers.js
+ */
+export async function invokeTool(
+  skills: Skill[],
+  fullToolName: string,
+  args: Record<string, unknown> = {}
+): Promise<{ content: unknown[]; error?: string }> {
+  const resolved = resolveTool(skills, fullToolName);
+  if (!resolved) {
+    return { content: [], error: `Unknown tool: ${fullToolName}` };
+  }
+
+  const { skill, tool } = resolved;
+  const skillDir = dirname(skill.path);
+
+  // 1. Try built-in handlers
+  const builtin = BUILTIN_HANDLERS[fullToolName];
+  if (builtin) {
+    try {
+      const result = await Promise.resolve(builtin(args));
+      return { content: [{ type: "text", text: String(result) }] };
+    } catch (err) {
+      return { content: [], error: String(err) };
+    }
+  }
+
+  // 2. Try skill's handlers.js
+  const handlersPath = join(skillDir, "handlers.js");
+  if (existsSync(handlersPath)) {
+    try {
+      const mod = await import(pathToFileURL(handlersPath).href);
+      const handler = mod[tool.name] ?? mod.default?.[tool.name];
+      if (typeof handler !== "function") {
+        return { content: [], error: `Handler not found: ${tool.name}` };
+      }
+      const result = await Promise.resolve(handler(args));
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (err) {
+      return { content: [], error: String(err) };
+    }
+  }
+
+  return { content: [], error: `No handler for ${fullToolName}` };
 }

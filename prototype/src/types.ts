@@ -5,6 +5,19 @@
 /** Input modality */
 export type InputModality = "text" | "voice" | "image" | "video";
 
+/** Multimodal input payload */
+export interface MultimodalInput {
+  modality: InputModality;
+  /** Text content or transcript */
+  text?: string;
+  /** Voice: WAV bytes (Base64 or Buffer) */
+  voice?: Buffer | string;
+  /** Image: raw bytes or base64 */
+  image?: Buffer | string;
+  /** Video: raw bytes or base64 */
+  video?: Buffer | string;
+}
+
 /** Inference target (routing decision) */
 export type InferenceTarget = "on_device" | "cloud";
 
@@ -41,3 +54,6 @@ export interface AIResponse {
   message: string;
   toolsUsed?: string[];
 }
+
+/** Tool handler: (args) => result (sync or async) */
+export type ToolHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>;

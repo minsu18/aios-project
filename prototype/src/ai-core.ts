@@ -1,56 +1,85 @@
 /**
  * AIOS AI Core prototype
  *
- * - Accepts text input (Phase 1: text only)
- * - Routes to on-device vs cloud
- * - Returns intent + response (placeholder logic)
+ * - Accepts text input (Phase 1: text only; multimodal API ready)
+ * - Routes to on-device vs cloud via pluggable inference
+ * - Invokes skill tools when intent matches
  */
 
-import type { InferenceTarget } from "./types.js";
+import type { InferenceTarget, Skill, AIResponse, MultimodalInput } from "./types.js";
+import { invokeTool } from "./skill-runtime.js";
+import { listTools } from "./skill-runtime.js";
+import { getInferenceBackend } from "./inference.js";
 
-/** Simple intent classification (placeholder; no real model) */
-const ON_DEVICE_TRIGGERS = [
-  "time",
-  "date",
-  "weather",
-  "calculator",
-  "calc",
-  "hello",
-  "hi",
-  "what time",
-  "what's the time",
-];
-
-/** Route input to on-device or cloud */
+/** Route input to on-device or cloud (delegates to inference backend) */
 export function route(input: string): InferenceTarget {
-  const lower = input.toLowerCase().trim();
-  if (lower.length < 100 && ON_DEVICE_TRIGGERS.some((t) => lower.includes(t))) {
-    return "on_device";
+  return getInferenceBackend().route(input);
+}
+
+/** Infer intent (delegates to inference backend; may use LLM) */
+export async function inferIntent(input: string): Promise<string> {
+  return getInferenceBackend().inferIntent(input);
+}
+
+/** Map intent + input to tool call (tool name, args) or null */
+function selectTool(
+  intent: string,
+  input: string,
+  skills: Skill[]
+): { tool: string; args: Record<string, unknown> } | null {
+  const tools = listTools(skills);
+  const hasTool = (name: string) => tools.some((t) => t.name === name);
+
+  if (intent === "time" && hasTool("example.get_time")) {
+    // Match "time in Tokyo" or "timezone America/New_York" (avoid "time is" -> "is")
+    const tzMatch = input.match(/(?:time\s+in|timezone)\s+([\w/]+)/i);
+    return {
+      tool: "example.get_time",
+      args: tzMatch ? { timezone: tzMatch[1] } : {},
+    };
   }
-  return "cloud";
+  if (intent === "echo" && hasTool("example.echo")) {
+    const text = input.replace(/^echo\s+/i, "").trim() || input;
+    return { tool: "example.echo", args: { text } };
+  }
+  return null;
 }
 
-/** Infer intent (placeholder; would use LLM in production) */
-export function inferIntent(input: string): string {
-  const lower = input.toLowerCase().trim();
-  if (lower.includes("time") || lower.includes("date")) return "time";
-  if (lower.includes("weather")) return "weather";
-  if (lower.includes("calc") || lower.includes("+") || lower.includes("*"))
-    return "calculator";
-  if (lower.includes("hello") || lower.includes("hi")) return "greeting";
-  return "general";
-}
+/**
+ * Process text input and return AI response.
+ * Invokes skill tools when intent matches; otherwise uses inference backend.
+ */
+export async function process(
+  input: string,
+  skills: Skill[] = []
+): Promise<AIResponse> {
+  const backend = getInferenceBackend();
+  const target = backend.route(input);
+  const intent = await backend.inferIntent(input);
 
-/** Process text input and return AI response (prototype) */
-export function process(input: string): {
-  target: InferenceTarget;
-  intent: string;
-  message: string;
-} {
-  const target = route(input);
-  const intent = inferIntent(input);
+  const toolCall = selectTool(intent, input, skills);
+  if (toolCall) {
+    const result = await invokeTool(skills, toolCall.tool, toolCall.args);
+    if (result.error) {
+      return {
+        target,
+        intent,
+        message: `[Error] ${result.error}`,
+        toolsUsed: [toolCall.tool],
+      };
+    }
+    const text = result.content
+      .map((c) => (typeof c === "object" && c && "text" in c ? (c as { text: string }).text : String(c)))
+      .join("");
+    return {
+      target,
+      intent,
+      message: `[On-device] ${text}`,
+      toolsUsed: [toolCall.tool],
+    };
+  }
 
-  // Placeholder responses (no real inference)
+  // Fallback: placeholder responses
   let message: string;
   if (intent === "time") {
     const now = new Date();
@@ -62,9 +91,47 @@ export function process(input: string): {
       "[On-device] Calculator would evaluate here. (Not implemented in prototype.)";
   } else if (target === "on_device") {
     message = `[On-device] Intent: ${intent}. (Placeholder response.)`;
+  } else if (backend.generateCloudResponse) {
+    message = await backend.generateCloudResponse(input);
   } else {
     message = `[Cloud] Complex query routed to cloud: "${input.slice(0, 50)}..."`;
   }
 
   return { target, intent, message };
+}
+
+/**
+ * Extract text from multimodal input for processing.
+ * Voice/image/video require STT/vision (Phase 3); for now return placeholder.
+ */
+function extractTextFromMultimodal(input: MultimodalInput): string {
+  if (input.text) return input.text;
+  if (input.modality === "voice") {
+    return "[Voice input - STT not yet implemented. Use text.]";
+  }
+  if (input.modality === "image") {
+    return "[Image input - Vision not yet implemented. Use text.]";
+  }
+  if (input.modality === "video") {
+    return "[Video input - Multimodal pipeline not yet implemented. Use text.]";
+  }
+  return "";
+}
+
+/**
+ * Process multimodal input. Text is handled; voice/image/video return placeholder.
+ */
+export async function processMultimodal(
+  input: MultimodalInput,
+  skills: Skill[] = []
+): Promise<AIResponse> {
+  const text = extractTextFromMultimodal(input);
+  if (!text || text.startsWith("[")) {
+    return {
+      target: "cloud",
+      intent: "general",
+      message: text || "No text input provided.",
+    };
+  }
+  return process(text, skills);
 }
