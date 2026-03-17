@@ -34,11 +34,17 @@ export interface MCPTool {
   };
 }
 
+/** Permission scope for skill sandbox */
+export type SkillPermission = "network" | "filesystem" | "env";
+
 /** Skill metadata from SKILL.md frontmatter */
 export interface SkillMeta {
   name: string;
   description: string;
   version: string;
+  author?: string;
+  category?: string;
+  permissions?: SkillPermission[];
   tools?: MCPTool[];
 }
 

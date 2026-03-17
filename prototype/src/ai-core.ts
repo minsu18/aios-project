@@ -21,6 +21,22 @@ export async function inferIntent(input: string): Promise<string> {
   return getInferenceBackend().inferIntent(input);
 }
 
+/** Extract location from weather queries */
+function extractLocation(input: string): string {
+  const m = input.match(/weather\s+(?:in|at|for)?\s*([^.?]+)/i)
+    || input.match(/what'?s?\s+the\s+weather\s+(?:in|at|for)?\s*([^.?]+)/i)
+    || input.match(/(?:in|at|for)\s+([A-Za-z\s]+?)(?:\?|$)/i);
+  return m ? m[1].trim() : "unknown";
+}
+
+/** Extract math expression from input */
+function extractExpression(input: string): string {
+  const m = input.match(/(?:calc|calculate|compute|evaluate)\s+(.+)/i)
+    || input.match(/(\d+\.?\d*[\s+\-*/^()]+\d+\.?\d*)/)
+    || input.match(/(\d[\d+\-*/.()^ ]+)/);
+  return m ? m[1].replace(/\s/g, "").trim() : "";
+}
+
 /** Map intent + input to tool call (tool name, args) or null */
 function selectTool(
   intent: string,
@@ -31,16 +47,19 @@ function selectTool(
   const hasTool = (name: string) => tools.some((t) => t.name === name);
 
   if (intent === "time" && hasTool("example.get_time")) {
-    // Match "time in Tokyo" or "timezone America/New_York" (avoid "time is" -> "is")
     const tzMatch = input.match(/(?:time\s+in|timezone)\s+([\w/]+)/i);
-    return {
-      tool: "example.get_time",
-      args: tzMatch ? { timezone: tzMatch[1] } : {},
-    };
+    return { tool: "example.get_time", args: tzMatch ? { timezone: tzMatch[1] } : {} };
   }
   if (intent === "echo" && hasTool("example.echo")) {
     const text = input.replace(/^echo\s+/i, "").trim() || input;
     return { tool: "example.echo", args: { text } };
+  }
+  if (intent === "weather" && hasTool("weather.get_weather")) {
+    return { tool: "weather.get_weather", args: { location: extractLocation(input) } };
+  }
+  if (intent === "calculator" && hasTool("calculator.evaluate")) {
+    const expr = extractExpression(input);
+    if (expr) return { tool: "calculator.evaluate", args: { expression: expr } };
   }
   return null;
 }

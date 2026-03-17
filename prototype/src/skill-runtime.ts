@@ -11,7 +11,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
-import type { Skill, SkillMeta, MCPTool, ToolHandler } from "./types.js";
+import type { Skill, SkillMeta, MCPTool, ToolHandler, SkillPermission } from "./types.js";
 
 const SKILL_FILENAME = "SKILL.md";
 
@@ -71,6 +71,23 @@ function parseTools(meta: Record<string, unknown>): MCPTool[] {
   }
 }
 
+/** Parse permissions array from frontmatter */
+function parsePermissions(meta: Record<string, unknown>): SkillPermission[] {
+  const raw = meta.permissions;
+  if (!raw) return [];
+  if (typeof raw === "string") {
+    try {
+      const arr = JSON.parse(raw) as unknown[];
+      return arr.filter((p): p is SkillPermission =>
+        p === "network" || p === "filesystem" || p === "env"
+      );
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 /** Load a single skill from a directory */
 export function loadSkill(skillDir: string): Skill | null {
   const path = join(skillDir, SKILL_FILENAME);
@@ -83,6 +100,9 @@ export function loadSkill(skillDir: string): Skill | null {
     name: (meta.name as string) ?? "unknown",
     description: (meta.description as string) ?? "",
     version: (meta.version as string) ?? "0.0.0",
+    author: meta.author as string | undefined,
+    category: meta.category as string | undefined,
+    permissions: parsePermissions(meta),
     tools: parseTools(meta),
   };
 
@@ -144,7 +164,70 @@ const BUILTIN_HANDLERS: Record<string, ToolHandler> = {
   "example.echo": (args) => {
     return (args.text as string) ?? "";
   },
+  "weather.get_weather": (args) => {
+    const loc = (args.location as string) || "unknown";
+    const units = (args.units as string) || "celsius";
+    return `[Mock] ${loc}: 22°${units === "fahrenheit" ? "F" : "C"}, partly cloudy`;
+  },
+  "calculator.evaluate": (args) => {
+    const expr = String(args.expression ?? "").replace(/\s/g, "");
+    if (!expr) return "Error: empty expression";
+    const r = safeEval(expr);
+    return r.ok ? String(r.value) : r.error;
+  },
 };
+
+/** Safe arithmetic eval — only numbers and +-* slash ^, no eval or Function */
+function safeEval(expr: string): { ok: true; value: number } | { ok: false; error: string } {
+  const ws = new RegExp("\\s", "g");
+  const caret = new RegExp("\\^", "g");
+  const s = expr.replace(ws, "").replace(caret, "**");
+  const validRe = new RegExp("^[\\d+\\-*\\x2F.() ]+$");
+  if (!validRe.test(s)) return { ok: false, error: "Invalid characters" };
+  try {
+    const tokRe = new RegExp("(\\d+\\.?\\d*|\\*\\*|[+\\-*\\x2F]|\\(|\\))", "g");
+    const tok = s.match(tokRe);
+    if (!tok?.length) return { ok: false, error: "Empty" };
+    let i = 0;
+    const parseExpr = (): number => {
+      let v = parseTerm();
+      while (i < tok.length && (tok[i] === "+" || tok[i] === "-")) {
+        const op = tok[i++];
+        const r = parseTerm();
+        v = op === "+" ? v + r : v - r;
+      }
+      return v;
+    };
+    const parseTerm = (): number => {
+      let v = parseFactor();
+      while (i < tok.length && (tok[i] === "*" || tok[i] === "/" || tok[i] === "**")) {
+        const op = tok[i++];
+        const r = parseFactor();
+        if (op === "*") v *= r;
+        else if (op === "/") v = r === 0 ? NaN : v / r;
+        else v = Math.pow(v, r);
+      }
+      return v;
+    };
+    const parseFactor = (): number => {
+      if (tok[i] === "(") {
+        i++;
+        const v = parseExpr();
+        if (tok[i] !== ")") throw new Error("Unmatched )");
+        i++;
+        return v;
+      }
+      const n = parseFloat(tok[i++]);
+      if (Number.isNaN(n)) throw new Error("Bad number");
+      return n;
+    };
+    const v = parseExpr();
+    if (i !== tok.length || !Number.isFinite(v)) return { ok: false, error: "Invalid" };
+    return { ok: true, value: v };
+  } catch {
+    return { ok: false, error: "Invalid expression" };
+  }
+}
 
 /** Find skill and tool by full name (e.g. "example.get_time") */
 function resolveTool(skills: Skill[], fullName: string): { skill: Skill; tool: MCPTool } | null {
@@ -174,6 +257,12 @@ export async function invokeTool(
 
   const { skill, tool } = resolved;
   const skillDir = dirname(skill.path);
+
+  // 0. Permission check (sandbox) — log only for now
+  const perms = skill.meta.permissions ?? [];
+  if (perms.includes("network") || perms.includes("filesystem")) {
+    process.env.AIOS_DEBUG && console.warn(`[sandbox] ${fullToolName} declared: ${perms.join(", ")}`);
+  }
 
   // 1. Try built-in handlers
   const builtin = BUILTIN_HANDLERS[fullToolName];

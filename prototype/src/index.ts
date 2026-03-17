@@ -13,6 +13,7 @@
 import { process as processInput } from "./ai-core.js";
 import { loadAllSkills, listTools } from "./skill-runtime.js";
 import { installSkill, removeSkill, browseRegistry, installFromRegistry, updateSkill, updateAllSkills } from "./app-store.js";
+import { c, formatResponse } from "./ui.js";
 
 async function main() {
   const cmd = process.argv[2];
@@ -52,14 +53,17 @@ async function main() {
     try {
       const skills = await browseRegistry();
       const registryPath = process.env.AIOS_REGISTRY_URL ?? "default (local or GitHub)";
-      console.log("Registry:", registryPath);
-      console.log("Available skills:", skills.length);
+      console.log(c.brand("AIOS Registry"));
+      console.log(c.dim(`Source: ${registryPath}\n`));
       for (const s of skills) {
-        console.log(`  ${s.name} v${s.version}: ${s.description}`);
-        console.log(`    source: ${s.source}`);
+        const cat = s.category ? c.dim(` [${s.category}]`) : "";
+        const auth = s.author ? c.dim(` by ${s.author}`) : "";
+        console.log(`  ${c.brand(s.name)} v${s.version}${cat}${auth}`);
+        console.log(`    ${s.description}`);
+        console.log(`    ${c.dim("source:")} ${s.source}`);
       }
     } catch (err) {
-      console.error("Browse failed:", err);
+      console.error(c.error("Browse failed:"), err);
       process.exit(1);
     }
     return;
@@ -119,13 +123,13 @@ async function main() {
       const t = line?.trim();
       if (!t || t === "exit" || t === "quit") return readline.close();
       if (t === "demo") {
-        for (const p of ["What time is it?", "echo Hello", "Hello!"]) {
+        for (const p of ["What time is it?", "Weather in Seoul?", "2+3*4", "Hello!"]) {
           const r = await processInput(p, skillsForSim);
-          console.log(`  [${r.target}] ${r.message}`);
+          console.log(" ", formatResponse(r));
         }
       } else {
         const r = await processInput(t, skillsForSim);
-        console.log(r.message);
+        console.log(formatResponse(r));
       }
       prompt();
     });
@@ -155,13 +159,17 @@ async function main() {
   if (cmd === "skills") {
     const skills = loadAllSkills();
     const tools = listTools(skills);
-    console.log("Loaded skills:", skills.length);
+    console.log(c.brand("AIOS Skills"));
+    console.log(c.dim(`Loaded: ${skills.length} skills, ${tools.length} tools\n`));
     for (const s of skills) {
-      console.log(`  - ${s.meta.name} v${s.meta.version}: ${s.meta.description}`);
+      const cat = s.meta.category ? c.dim(` [${s.meta.category}]`) : "";
+      const auth = s.meta.author ? c.dim(` by ${s.meta.author}`) : "";
+      console.log(`  ${c.brand(s.meta.name)} v${s.meta.version}${cat}${auth}`);
+      console.log(`    ${s.meta.description}`);
     }
-    console.log("MCP-compatible tools:", tools.length);
+    console.log(c.dim("\nTools:"));
     for (const t of tools) {
-      console.log(`  - ${t.name}: ${t.description}`);
+      console.log(`  ${c.tool(t.name)} — ${t.description}`);
     }
     return;
   }
@@ -172,18 +180,16 @@ async function main() {
     const prompts = [
       "What time is it?",
       "echo Hello from skill!",
+      "Weather in Tokyo?",
+      "Calculate 2+3*4",
       "Hello!",
-      "What's the weather in Tokyo?",
-      "Explain quantum computing and its applications in drug discovery",
+      "Explain quantum computing briefly",
     ];
-    console.log("AIOS Prototype — Demo\n");
+    console.log(c.brand("AIOS Demo\n"));
     for (const p of prompts) {
       const result = await processInput(p, skills);
-      const toolsStr = result.toolsUsed?.length
-        ? ` [tools: ${result.toolsUsed.join(", ")}]`
-        : "";
-      console.log(`> ${p}`);
-      console.log(`  [${result.target}] ${result.intent}: ${result.message}${toolsStr}\n`);
+      console.log(c.dim(">"), p);
+      console.log(" ", formatResponse(result), "\n");
     }
     return;
   }
@@ -232,17 +238,17 @@ async function main() {
       const t = line?.trim();
       if (!t || t === "exit" || t === "quit") return readline.close();
       if (t === "demo") {
-        for (const p of ["What time is it?", "echo Hello", "Hello!"]) {
+        for (const p of ["What time is it?", "Weather in Seoul?", "2+3*4", "Hello!"]) {
           const r = await processInput(p, skills);
-          console.log(`  [${r.target}] ${r.message}`);
+          console.log(" ", formatResponse(r));
         }
       } else {
         const r = await processInput(t, skills);
-        console.log(r.message);
+        console.log(formatResponse(r));
       }
       prompt();
     });
-    console.log("AIOS interactive. Type a prompt, 'demo', or 'exit'.");
+    console.log(c.brand("AIOS") + " interactive. Type a prompt, 'demo', or 'exit'.");
     prompt();
     return;
   }

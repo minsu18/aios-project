@@ -18,6 +18,8 @@ export interface RegistrySkill {
   name: string;
   description: string;
   version: string;
+  author?: string;
+  category?: string;
   source: string; // local:path | git:url | https://...
 }
 

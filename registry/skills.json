@@ -3,6 +3,24 @@
     "name": "example",
     "description": "Example skill with get_time and echo tools",
     "version": "0.1.0",
+    "author": "AIOS",
+    "category": "utility",
     "source": "local:.aios/skills/example"
+  },
+  {
+    "name": "weather",
+    "description": "Get weather for any location (mock in prototype)",
+    "version": "0.1.0",
+    "author": "AIOS",
+    "category": "productivity",
+    "source": "local:.aios/skills/weather"
+  },
+  {
+    "name": "calculator",
+    "description": "Safe arithmetic calculator",
+    "version": "0.1.0",
+    "author": "AIOS",
+    "category": "utility",
+    "source": "local:.aios/skills/calculator"
   }
 ]
