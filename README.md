@@ -43,7 +43,8 @@ AIOS is an **AI-only OS**: the system operates solely through AI, with no conven
 
 ```
 aios-project/
-├── kernel/          # Minimal microkernel
+├── kernel/          # x86-64 microkernel (QEMU)
+├── kernel-rpi/      # Raspberry Pi 3/4 kernel (aarch64)
 ├── hal/             # Hardware Abstraction Layer
 ├── ai-core/         # AI interface core
 ├── skills/          # Skill runtime (App Store items = installable skills)
@@ -85,6 +86,10 @@ cargo run -p aios-boot
 ./tools/simulate.sh --cpus 2 --memory 512
 # Or: cd prototype && npm run simulate
 # Without QEMU: npm run simulate:no-vm
+
+# Raspberry Pi: build kernel8.img for RPi 3/4
+./tools/build-rpi.sh
+# Copy target/.../kernel8.img to SD card boot partition
 
 # Rust crates (kernel, HAL, ai-core)
 cargo build

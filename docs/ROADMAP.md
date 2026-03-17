@@ -18,7 +18,7 @@
 
 ## Phase 3
 - [x] VM simulation (configurable specs, boot + prototype)
-- [ ] Bare-metal boot on real hardware
+- [x] Raspberry Pi 3/4 kernel (kernel8.img, UART serial)
 - [ ] Drivers: camera, audio, comms (real hardware bindings)
 - [x] Multimodal I/O pipeline (STT Whisper, Vision API)
 

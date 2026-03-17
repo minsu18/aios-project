@@ -1,5 +1,15 @@
 # AIOS Tools
 
+## Raspberry Pi Build
+
+Build `kernel8.img` for Raspberry Pi 3/4:
+
+```bash
+./tools/build-rpi.sh
+```
+
+Requires: `aarch64-none-elf` toolchain, `rustup target add aarch64-unknown-none`. See [kernel-rpi/README.md](../kernel-rpi/README.md).
+
 ## VM Simulation
 
 Boot AIOS kernel in QEMU with configurable specs, then run the AI prototype:
