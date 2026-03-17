@@ -6,7 +6,10 @@ TypeScript prototype for AI core and skill runtime. Runs on host for validation 
 
 - **AI Core**: Text input → intent inference → routing (on-device vs cloud)
 - **Skill Tool Invocation**: Invokes MCP tools (e.g. example.get_time, example.echo)
-- **Pluggable Inference**: `AIOS_INFERENCE=placeholder|openai|anthropic` (requires OPENAI_API_KEY / ANTHROPIC_API_KEY)
+- **Pluggable Inference**: `AIOS_INFERENCE=placeholder|openai|anthropic|ollama|transformers`
+  - `ollama`: Local LLM via Ollama (run `ollama serve`, `ollama pull llama3.2`). Optional: `AIOS_OLLAMA_MODEL`, `AIOS_OLLAMA_HOST`
+  - `transformers`: Local LLM via @huggingface/transformers (first run downloads model). Optional: `AIOS_TRANSFORMERS_MODEL`
+- **Offline-first**: `AIOS_OFFLINE=1` forces all inference on-device (no cloud calls). Built-in skills (time, weather, calculator, echo) always work without network.
 - **Multimodal I/O**: Voice (Whisper STT), image (Vision API) — `voice <file>`, `image <file> [prompt]`
 - **Skill Runtime**: Load SKILL.md from `~/.aios/skills/` or `.aios/skills/`
 - **App Store CLI**: Install, remove, browse registry, install-from-registry

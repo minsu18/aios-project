@@ -4,5 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "AIOS Hardware Abstraction Layer - memory, CPU, GPU, comms, camera, audio"
 
+[features]
+default = []
+# Enable llama.cpp FFI for on-device inference (requires libllama built for target)
+llama = []
+
 [dependencies]
 # aios-kernel = { path = "../kernel" }  # Phase 2

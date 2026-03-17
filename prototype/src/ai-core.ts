@@ -9,16 +9,16 @@
 import type { InferenceTarget, Skill, AIResponse, MultimodalInput } from "./types.js";
 import { invokeTool } from "./skill-runtime.js";
 import { listTools } from "./skill-runtime.js";
-import { getInferenceBackend } from "./inference.js";
+import { getInferenceBackend, isOffline } from "./inference.js";
 
 /** Route input to on-device or cloud (delegates to inference backend) */
-export function route(input: string): InferenceTarget {
-  return getInferenceBackend().route(input);
+export async function route(input: string): Promise<InferenceTarget> {
+  return (await getInferenceBackend()).route(input);
 }
 
 /** Infer intent (delegates to inference backend; may use LLM) */
 export async function inferIntent(input: string): Promise<string> {
-  return getInferenceBackend().inferIntent(input);
+  return (await getInferenceBackend()).inferIntent(input);
 }
 
 /** Extract location from weather queries */
@@ -72,7 +72,7 @@ export async function process(
   input: string,
   skills: Skill[] = []
 ): Promise<AIResponse> {
-  const backend = getInferenceBackend();
+  const backend = await getInferenceBackend();
   const target = backend.route(input);
   const intent = await backend.inferIntent(input);
 
@@ -110,8 +110,13 @@ export async function process(
       "[On-device] Calculator would evaluate here. (Not implemented in prototype.)";
   } else if (target === "on_device") {
     message = `[On-device] Intent: ${intent}. (Placeholder response.)`;
-  } else if (backend.generateCloudResponse) {
+  } else if (backend.generateCloudResponse && !isOffline()) {
     message = await backend.generateCloudResponse(input);
+    const usedFallback = message.includes("(offline)") || message.includes("(cloud unavailable)");
+    if (usedFallback) return { target: "on_device", intent, message };
+  } else if (isOffline()) {
+    message = `[On-device] (offline) "${input.slice(0, 50)}..." — use built-in skills or enable network for complex queries.`;
+    return { target: "on_device", intent, message };
   } else {
     message = `[Cloud] Complex query routed to cloud: "${input.slice(0, 50)}..."`;
   }

@@ -26,3 +26,10 @@
 - [x] App Store — install, remove skills
 - [x] App Store — browse registry, install-from-registry
 - [x] App Store — remote registry URL (default GitHub raw), update command
+
+## Phase 5
+- [x] Offline-first: AIOS_OFFLINE=1 forces all inference on-device
+- [x] Architecture: built-in on-device AI, works without network
+- [x] On-device LLM (prototype): Ollama, Transformers.js backends
+- [x] HAL gpu.inference: interface + llama.cpp design (docs/HAL_LLAMA_CPP.md)
+- [ ] HAL llama.cpp FFI: real bare-metal inference

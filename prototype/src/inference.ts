@@ -4,6 +4,8 @@
  * Abstraction for inference backends: placeholder, OpenAI, or Anthropic.
  * Set AIOS_INFERENCE=openai|anthropic|placeholder (default) to switch.
  * Requires OPENAI_API_KEY or ANTHROPIC_API_KEY for respective backends.
+ *
+ * Offline-first: AIOS_OFFLINE=1 forces all inference on-device (no cloud calls).
  */
 
 import OpenAI from "openai";
@@ -30,8 +32,8 @@ const ON_DEVICE_TRIGGERS = [
 /** Call LLM for intent classification. Returns single-word intent. */
 const INTENT_SYSTEM = "You are an intent classifier. Reply with ONLY one word: time, weather, calculator, greeting, echo, or general.";
 
-/** Placeholder: keyword-based routing and intent (no LLM) */
-function createPlaceholderBackend(): InferenceBackend {
+/** Placeholder: keyword-based routing and intent (no LLM). Exported for use by other backends. */
+export function createPlaceholderBackend(): InferenceBackend {
   return {
     route(input: string): InferenceTarget {
       const lower = input.toLowerCase().trim();
@@ -77,8 +79,10 @@ function createOpenAIBackend(): InferenceBackend {
     return res.choices[0]?.message?.content?.trim() ?? "";
   };
 
+  const placeholder = createPlaceholderBackend();
   return {
     route(input: string): InferenceTarget {
+      if (isOffline()) return "on_device";
       const lower = input.toLowerCase().trim();
       if (lower.length < 100 && ON_DEVICE_TRIGGERS.some((t) => lower.includes(t))) {
         return "on_device";
@@ -87,6 +91,7 @@ function createOpenAIBackend(): InferenceBackend {
     },
 
     async inferIntent(input: string): Promise<string> {
+      if (isOffline()) return placeholder.inferIntent(input);
       try {
         const text = await callChat([
           { role: "system", content: INTENT_SYSTEM },
@@ -94,16 +99,19 @@ function createOpenAIBackend(): InferenceBackend {
         ]);
         return text.toLowerCase().replace(/[^a-z]/g, "") || "general";
       } catch {
-        return createPlaceholderBackend().inferIntent(input);
+        return placeholder.inferIntent(input);
       }
     },
 
     async generateCloudResponse(input: string): Promise<string> {
+      if (isOffline()) {
+        return `[On-device] (offline) "${input.slice(0, 50)}..." — use built-in skills or enable network.`;
+      }
       try {
         const text = await callChat([{ role: "user", content: input }]);
         return `[Cloud/OpenAI] ${text}`;
       } catch (err) {
-        return `[Error] ${String(err)}`;
+        return `[On-device] (cloud unavailable) "${input.slice(0, 50)}..." — falling back.`;
       }
     },
   };
@@ -131,8 +139,10 @@ function createAnthropicBackend(): InferenceBackend {
     return block && "text" in block ? block.text.trim() : "";
   };
 
+  const placeholder = createPlaceholderBackend();
   return {
     route(input: string): InferenceTarget {
+      if (isOffline()) return "on_device";
       const lower = input.toLowerCase().trim();
       if (lower.length < 100 && ON_DEVICE_TRIGGERS.some((t) => lower.includes(t))) {
         return "on_device";
@@ -141,38 +151,56 @@ function createAnthropicBackend(): InferenceBackend {
     },
 
     async inferIntent(input: string): Promise<string> {
+      if (isOffline()) return placeholder.inferIntent(input);
       try {
         const text = await callMessages(INTENT_SYSTEM, `Classify intent: "${input}"`);
         return text.toLowerCase().replace(/[^a-z]/g, "") || "general";
       } catch {
-        return createPlaceholderBackend().inferIntent(input);
+        return placeholder.inferIntent(input);
       }
     },
 
     async generateCloudResponse(input: string): Promise<string> {
+      if (isOffline()) {
+        return `[On-device] (offline) "${input.slice(0, 50)}..." — use built-in skills or enable network.`;
+      }
       try {
         const text = await callMessages("You are a helpful AI assistant.", input);
         return `[Cloud/Anthropic] ${text}`;
       } catch (err) {
-        return `[Error] ${String(err)}`;
+        return `[On-device] (cloud unavailable) "${input.slice(0, 50)}..." — falling back.`;
       }
     },
   };
 }
 
 let cachedBackend: InferenceBackend | null = null;
+let backendPromise: Promise<InferenceBackend> | null = null;
 
-/** Resolve backend from env. Caches result. */
-export function getInferenceBackend(): InferenceBackend {
+/** True when offline mode is enabled; no cloud API calls. */
+export function isOffline(): boolean {
+  return process.env.AIOS_OFFLINE === "1" || process.env.AIOS_OFFLINE === "true";
+}
+
+/** Resolve backend from env. Caches result. Async for ollama/transformers. */
+export async function getInferenceBackend(): Promise<InferenceBackend> {
   if (cachedBackend) return cachedBackend;
+  if (backendPromise) return backendPromise;
 
   const mode = (process.env.AIOS_INFERENCE ?? "placeholder").toLowerCase();
-  cachedBackend =
-    mode === "openai"
-      ? createOpenAIBackend()
-      : mode === "anthropic"
-        ? createAnthropicBackend()
-        : createPlaceholderBackend();
+  backendPromise =
+    mode === "ollama"
+      ? import("./inference-ollama.js").then((m) => m.createOllamaBackend())
+      : mode === "transformers"
+        ? import("./inference-transformers.js").then((m) => m.createTransformersBackend())
+        : Promise.resolve(
+            mode === "openai"
+              ? createOpenAIBackend()
+              : mode === "anthropic"
+                ? createAnthropicBackend()
+                : createPlaceholderBackend(),
+          );
 
+  cachedBackend = await backendPromise;
   return cachedBackend;
 }
