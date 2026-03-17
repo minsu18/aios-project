@@ -1,0 +1,19 @@
+[package]
+name = "aios-kernel"
+version = "0.1.0"
+edition = "2021"
+authors = ["AIOS Project"]
+description = "AIOS microkernel - minimal scheduling, memory, interrupts"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+# Phase 2: Add x86_64, bootloader, etc.
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true

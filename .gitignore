@@ -1,0 +1,34 @@
+# Build
+target/
+dist/
+build/
+*.o
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rust (lock 파일은 워크스페이스 루트에 커밋 권장)
+# Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/

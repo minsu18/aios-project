@@ -1,0 +1,7 @@
+[package]
+name = "aios-ai-core"
+version = "0.1.0"
+edition = "2021"
+description = "AIOS AI Core - intent understanding, task orchestration, skill dispatch"
+
+[dependencies]
