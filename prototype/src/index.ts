@@ -12,7 +12,7 @@
 
 import { process as processInput } from "./ai-core.js";
 import { loadAllSkills, listTools } from "./skill-runtime.js";
-import { installSkill, removeSkill, browseRegistry, installFromRegistry } from "./app-store.js";
+import { installSkill, removeSkill, browseRegistry, installFromRegistry, updateSkill, updateAllSkills } from "./app-store.js";
 
 async function main() {
   const cmd = process.argv[2];
@@ -51,7 +51,9 @@ async function main() {
   if (cmd === "browse") {
     try {
       const skills = await browseRegistry();
-      console.log("Available skills in registry:", skills.length);
+      const registryPath = process.env.AIOS_REGISTRY_URL ?? "default (local or GitHub)";
+      console.log("Registry:", registryPath);
+      console.log("Available skills:", skills.length);
       for (const s of skills) {
         console.log(`  ${s.name} v${s.version}: ${s.description}`);
         console.log(`    source: ${s.source}`);
@@ -70,6 +72,25 @@ async function main() {
     } else {
       console.error(`Install failed: ${result.error}`);
       process.exit(1);
+    }
+    return;
+  }
+
+  if (cmd === "update") {
+    if (arg) {
+      const result = await updateSkill(arg);
+      if (result.ok) {
+        console.log(result.updated ? `Updated ${arg}` : `${arg} is already up to date`);
+      } else {
+        console.error(`Update failed: ${result.error}`);
+        process.exit(1);
+      }
+    } else {
+      const { updated, errors } = await updateAllSkills();
+      if (updated.length) console.log("Updated:", updated.join(", "));
+      if (updated.length === 0 && errors.length === 0) console.log("All skills up to date");
+      for (const e of errors) console.error(e);
+      if (errors.length) process.exit(1);
     }
     return;
   }
@@ -152,7 +173,7 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log("AIOS Phase 1 Prototype");
-    console.log("Usage: node dist/index.js [prompt] | demo | skills | install <path> | remove <name> | voice <file> | image <file> [prompt]");
+    console.log("Usage: node dist/index.js [prompt] | demo | skills | install <path> | remove <name> | browse | install-from-registry <name> | update [name] | voice <file> | image <file> [prompt]");
   }
 }
 

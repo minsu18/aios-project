@@ -93,12 +93,17 @@ export function removeSkill(
   }
 }
 
-/** Default registry: local file or GitHub raw URL */
+/** Default remote registry URL (GitHub raw) */
+const DEFAULT_REGISTRY_URL =
+  "https://raw.githubusercontent.com/minsu18/aios-project/main/registry/skills.json";
+
+/** Registry source: env URL, local file, or default remote */
 function getRegistryPath(): string {
   const url = process.env.AIOS_REGISTRY_URL;
   if (url) return url;
   const projectRoot = join(process.cwd(), "..");
-  return join(projectRoot, "registry", "skills.json");
+  const localPath = join(projectRoot, "registry", "skills.json");
+  return existsSync(localPath) ? localPath : DEFAULT_REGISTRY_URL;
 }
 
 /**
@@ -166,4 +171,74 @@ export async function installFromRegistry(
     }
   }
   return result;
+}
+
+/** Compare versions; returns true if a is newer than b (simple semver-like) */
+function isNewerVersion(a: string, b: string): boolean {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va > vb) return true;
+    if (va < vb) return false;
+  }
+  return false;
+}
+
+/**
+ * Update a skill from the registry (reinstall if newer version available).
+ */
+export async function updateSkill(
+  skillName: string,
+  options: { target?: "user" | "project" } = {}
+): Promise<{ ok: boolean; updated?: boolean; error?: string }> {
+  const baseDir =
+    options.target === "project" ? getProjectInstallDir() : getInstallDir();
+  const skillPath = join(baseDir, skillName);
+  if (!existsSync(skillPath)) {
+    return { ok: false, error: `Skill not installed: ${skillName}` };
+  }
+
+  const installed = loadSkill(skillPath);
+  const registry = await browseRegistry();
+  const reg = registry.find((s) => s.name === skillName);
+  if (!reg) {
+    return { ok: false, error: `Skill not in registry: ${skillName}` };
+  }
+
+  const instVersion = installed?.meta.version ?? "0.0.0";
+  if (!isNewerVersion(reg.version, instVersion)) {
+    return { ok: true, updated: false };
+  }
+
+  const result = await installFromRegistry(skillName, options);
+  return { ok: result.ok, updated: result.ok, error: result.error };
+}
+
+/**
+ * Update all installed skills that have newer versions in the registry.
+ */
+export async function updateAllSkills(
+  options: { target?: "user" | "project" } = {}
+): Promise<{ updated: string[]; errors: string[] }> {
+  const installed = listInstalled(
+    options.target === "project" ? getProjectInstallDir() : getInstallDir()
+  );
+  const registry = await browseRegistry();
+  const regMap = new Map(registry.map((s) => [s.name, s]));
+  const updated: string[] = [];
+  const errors: string[] = [];
+
+  for (const skill of installed) {
+    const reg = regMap.get(skill.meta.name);
+    if (!reg) continue;
+    if (!isNewerVersion(reg.version, skill.meta.version)) continue;
+
+    const result = await updateSkill(skill.meta.name, options);
+    if (result.ok && result.updated) updated.push(skill.meta.name);
+    if (result.error) errors.push(`${skill.meta.name}: ${result.error}`);
+  }
+
+  return { updated, errors };
 }

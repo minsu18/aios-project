@@ -26,9 +26,12 @@ npm run skills
 # Install skill from path
 node dist/index.js install /path/to/skill-dir
 
-# Browse registry and install from registry
+# Browse registry (local or AIOS_REGISTRY_URL, defaults to GitHub raw)
 node dist/index.js browse
 node dist/index.js install-from-registry <skill-name>
+
+# Update skill(s) to latest from registry
+node dist/index.js update [skill-name]
 
 # Remove installed skill
 node dist/index.js remove <skill-name>

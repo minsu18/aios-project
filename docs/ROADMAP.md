@@ -24,4 +24,4 @@
 ## Phase 4
 - [x] App Store — install, remove skills
 - [x] App Store — browse registry, install-from-registry
-- [ ] App Store — remote registry URL, manage (update)
+- [x] App Store — remote registry URL (default GitHub raw), update command
