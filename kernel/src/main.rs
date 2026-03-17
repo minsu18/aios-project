@@ -1,25 +1,69 @@
 //! AIOS Kernel — Minimal x86-64 boot entry
 //!
-//! Phase 2: Bare-metal entry, serial output, halt.
+//! Phase 2: Bare-metal entry, serial output, boot sequence, halt.
 
 #![no_std]
 #![no_main]
 
 use bootloader_api::entry_point;
 use bootloader_api::BootInfo;
+use bootloader_api::info::MemoryRegionKind;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
 entry_point!(kernel_main);
 
-fn kernel_main(_boot_info: &'static mut BootInfo) -> ! {
+fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     init_serial();
-    serial_write(b"AIOS kernel booted.\r\n");
 
-    // Pass control to kernel init (Phase 2 minimal: just halt)
+    serial_write(b"\r\n");
+    serial_write(b"  ___    ___   ___  \r\n");
+    serial_write(b" |_ _|  / _ \\ / ___|\r\n");
+    serial_write(b"  | |  | | | |\\___ \\\r\n");
+    serial_write(b"  | |  | |_| | ___) |\r\n");
+    serial_write(b" |___|  \\___/ |____/ \r\n");
+    serial_write(b" AI-Native Operating System\r\n");
+    serial_write(b"\r\n");
+
+    serial_write(b"[ 0.000] Serial init\r\n");
+
+    let mem_mb = total_usable_mem_mb(boot_info);
+    serial_write(b"[ 0.001] Memory: ");
+    write_decimal(mem_mb as u64);
+    serial_write(b" MB usable\r\n");
+
+    serial_write(b"[ 0.002] HAL init (stub)\r\n");
+    serial_write(b"[ 0.003] AI layer: awaiting host bridge\r\n");
+    serial_write(b"\r\n>> AIOS kernel ready. (HLT)\r\n\r\n");
+
     loop {
         unsafe { asm!("hlt") }
     }
+}
+
+fn total_usable_mem_mb(boot_info: &BootInfo) -> u64 {
+    let mut total: u64 = 0;
+    for region in boot_info.memory_regions.iter() {
+        if region.kind == MemoryRegionKind::Usable {
+            total += region.end - region.start;
+        }
+    }
+    total / (1024 * 1024)
+}
+
+fn write_decimal(mut n: u64) {
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    if n == 0 {
+        serial_write(b"0");
+        return;
+    }
+    while n > 0 {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+    serial_write(&buf[i..]);
 }
 
 /// Initialize COM1 serial port (0x3F8)

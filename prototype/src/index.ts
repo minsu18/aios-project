@@ -76,6 +76,63 @@ async function main() {
     return;
   }
 
+  if (cmd === "simulate") {
+    const noVm = process.argv.includes("--no-vm");
+    const cpusIdx = process.argv.indexOf("--cpus");
+    const memIdx = process.argv.indexOf("--memory");
+    const cpus = cpusIdx >= 0 ? process.argv[cpusIdx + 1] ?? "2" : "2";
+    const mem = memIdx >= 0 ? process.argv[memIdx + 1] ?? "512" : "512";
+
+    if (!noVm) {
+      const { spawnSync } = await import("node:child_process");
+      const { join } = await import("node:path");
+      const script = join(process.cwd(), "..", "tools", "simulate.sh");
+      const result = spawnSync("bash", [script, "--cpus", cpus, "--memory", mem], {
+        stdio: "inherit",
+        cwd: join(process.cwd(), ".."),
+      });
+      if (result.signal !== "SIGTERM" && result.status !== 0) process.exit(result.status ?? 1);
+      return;
+    }
+
+    // Node-only simulated boot (no QEMU)
+    console.log("\n  ___    ___   ___  ");
+    console.log(" |_ _|  / _ \\ / ___|");
+    console.log("  | |  | | | |\\___ \\");
+    console.log("  | |  | |_| | ___) |");
+    console.log(" |___|  \\___/ |____/ ");
+    console.log(" AI-Native Operating System\n");
+    const memNum = parseInt(mem, 10) || 512;
+    const cpuNum = parseInt(cpus, 10) || 2;
+    console.log("[ 0.000] Serial init");
+    console.log(`[ 0.001] Memory: ${memNum} MB (simulated)`);
+    console.log(`[ 0.002] CPUs: ${cpuNum} (simulated)`);
+    console.log("[ 0.003] HAL init (stub)");
+    console.log("[ 0.004] AI layer ready\n");
+    console.log(">> AIOS prototype active. Type a prompt, 'demo', or 'exit'.\n");
+    const readline = (await import("node:readline")).createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    const skillsForSim = loadAllSkills();
+    const prompt = () => readline.question("> ", async (line) => {
+      const t = line?.trim();
+      if (!t || t === "exit" || t === "quit") return readline.close();
+      if (t === "demo") {
+        for (const p of ["What time is it?", "echo Hello", "Hello!"]) {
+          const r = await processInput(p, skillsForSim);
+          console.log(`  [${r.target}] ${r.message}`);
+        }
+      } else {
+        const r = await processInput(t, skillsForSim);
+        console.log(r.message);
+      }
+      prompt();
+    });
+    prompt();
+    return;
+  }
+
   if (cmd === "update") {
     if (arg) {
       const result = await updateSkill(arg);
@@ -166,6 +223,30 @@ async function main() {
     return;
   }
 
+  if (cmd === "interactive") {
+    const readline = (await import("node:readline")).createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    const prompt = () => readline.question("> ", async (line) => {
+      const t = line?.trim();
+      if (!t || t === "exit" || t === "quit") return readline.close();
+      if (t === "demo") {
+        for (const p of ["What time is it?", "echo Hello", "Hello!"]) {
+          const r = await processInput(p, skills);
+          console.log(`  [${r.target}] ${r.message}`);
+        }
+      } else {
+        const r = await processInput(t, skills);
+        console.log(r.message);
+      }
+      prompt();
+    });
+    console.log("AIOS interactive. Type a prompt, 'demo', or 'exit'.");
+    prompt();
+    return;
+  }
+
   // Default: single prompt from args or stdin
   const input = process.argv.slice(2).join(" ").trim();
   if (input) {
@@ -173,7 +254,7 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log("AIOS Phase 1 Prototype");
-    console.log("Usage: node dist/index.js [prompt] | demo | skills | install <path> | remove <name> | browse | install-from-registry <name> | update [name] | voice <file> | image <file> [prompt]");
+    console.log("Usage: node dist/index.js [prompt] | demo | skills | simulate | interactive | install <path> | remove <name> | browse | install-from-registry <name> | update [name] | voice <file> | image <file> [prompt]");
   }
 }
 

@@ -81,6 +81,11 @@ cd prototype && npm run skills
 # Phase 2: Kernel + QEMU boot (requires Rust nightly, qemu-system-x86_64)
 cargo run -p aios-boot
 
+# VM simulation: boot with configurable specs, then run AI prototype
+./tools/simulate.sh --cpus 2 --memory 512
+# Or: cd prototype && npm run simulate
+# Without QEMU: npm run simulate:no-vm
+
 # Rust crates (kernel, HAL, ai-core)
 cargo build
 ```

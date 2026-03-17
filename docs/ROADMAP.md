@@ -17,7 +17,8 @@
 - [x] Driver structure (camera, audio, comms traits)
 
 ## Phase 3
-- [ ] Bare-metal boot
+- [x] VM simulation (configurable specs, boot + prototype)
+- [ ] Bare-metal boot on real hardware
 - [ ] Drivers: camera, audio, comms (real hardware bindings)
 - [x] Multimodal I/O pipeline (STT Whisper, Vision API)
 
