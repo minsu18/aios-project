@@ -1,0 +1,10 @@
+[package]
+name = "aios-boot"
+version = "0.1.0"
+edition = "2021"
+description = "AIOS disk image builder and QEMU launcher"
+
+[dependencies]
+
+[build-dependencies]
+bootloader = "0.11"

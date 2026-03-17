@@ -8,8 +8,12 @@ description = "AIOS microkernel - minimal scheduling, memory, interrupts"
 [lib]
 crate-type = ["lib"]
 
+[[bin]]
+name = "kernel"
+path = "src/main.rs"
+
 [dependencies]
-# Phase 2: Add x86_64, bootloader, etc.
+bootloader_api = "0.11"
 
 [profile.dev]
 panic = "abort"

@@ -9,6 +9,7 @@ build/
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 
@@ -21,8 +22,8 @@ build/
 .DS_Store
 Thumbs.db
 
-# Rust (lock 파일은 워크스페이스 루트에 커밋 권장)
-# Cargo.lock
+# Rust
+Cargo.lock
 
 # Python
 __pycache__/

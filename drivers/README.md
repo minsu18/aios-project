@@ -1,10 +1,10 @@
 # AIOS Drivers
 
-하드웨어 드라이버:
-- 메모리
+Hardware drivers:
+- Memory
 - CPU/GPU
-- 통신 (WiFi, cellular, BT)
-- 카메라
-- 스피커, 마이크
+- Comms (WiFi, cellular, BT)
+- Camera
+- Speaker, microphone
 
-Phase 2–3에서 구현 예정.
+Planned for Phase 2–3.

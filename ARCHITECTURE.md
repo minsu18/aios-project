@@ -1,57 +1,58 @@
-# AIOS 아키텍처
+# AIOS Architecture
 
-## 1. 설계 원칙
+## 1. Design Principles
 
-1. **AI First**: 모든 사용자 상호작용은 AI를 통해 이루어진다.
-2. **Skill-based Extension**: 추가 기능은 스킬/MCP 모듈로 설치·관리된다.
-3. **Hybrid Inference**: 기본은 온디바이스, 고부하는 클라우드로 라우팅한다.
-4. **Minimal Kernel**: 커널은 최소한의 스케줄링·메모리·I/O만 담당한다.
+1. **AI-Only OS**: The system operates solely through AI. No traditional apps — AI is the only interface.
+2. **App Store**: A marketplace for diverse AI add-ons. Users browse, install, and manage skills that extend what the AI can do.
+3. **Hybrid Inference**: Basic tasks run on-device; heavy workloads are routed to the cloud.
+4. **Minimal Kernel**: The kernel handles only scheduling, memory, and I/O.
 
-## 2. 계층 구조
+## 2. Layer Structure
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ Layer 4: Multimodal I/O (텍스트·음성·이미지·동영상)          │
+│ Layer 4: Multimodal I/O (text, voice, image, video)         │
 ├────────────────────────────────────────────────────────────┤
-│ Layer 3: AI Core — 의도 해석, 작업 분해, 스킬 오케스트레이션 │
+│ Layer 3: AI Core — intent, task decomposition, orchestration│
 ├────────────────────────────────────────────────────────────┤
-│ Layer 2: Skill Runtime — MCP 호환 모듈 로드·실행·격리         │
+│ Layer 2: Skill Runtime + App Store — load, install, isolate │
 ├────────────────────────────────────────────────────────────┤
-│ Layer 1: HAL — 메모리, CPU, GPU, 네트워크, 센서, 오디오     │
+│ Layer 1: HAL — memory, CPU, GPU, network, sensors, audio    │
 ├────────────────────────────────────────────────────────────┤
-│ Layer 0: Microkernel — 태스크, 메모리, 인터럽트             │
+│ Layer 0: Microkernel — tasks, memory, interrupts           │
 └────────────────────────────────────────────────────────────┘
 ```
 
 ## 3. AI Core
 
-- **Input**: 텍스트, 음성(WAV), 이미지, 동영상
-- **Output**: HAL 호출, 스킬 호출, 멀티모달 응답
+- **Input**: text, voice (WAV), image, video
+- **Output**: HAL calls, skill calls, multimodal responses
 - **Routing**:
-  - 단순 의도(시간, 날씨, 계산) → 온디바이스
-  - 복잡 추론, 외부 데이터 → 클라우드
+  - Simple intents (time, weather, calculator) → on-device
+  - Complex reasoning, external data → cloud
 
-## 4. Skill/MCP 모듈
+## 4. App Store & Skill/MCP Modules
 
-- **형식**: SKILL.md + 도구 정의 (MCP 호환)
-- **설치 위치**: `~/.aios/skills/` 또는 프로젝트별
-- **격리**: 샌드박스 또는 권한 기반 접근 제어
+- **App Store**: Browse, install, and manage AI add-ons (skills). Provides diverse capabilities for varied AI usage.
+- **Skill format**: SKILL.md + tool definitions (MCP-compatible)
+- **Install path**: `~/.aios/skills/` or per-project
+- **Isolation**: sandbox or permission-based access control
 
 ## 5. HAL (Hardware Abstraction Layer)
 
-| 리소스 | 추상화 |
-|--------|--------|
-| 메모리 | alloc, free, mmap |
+| Resource | Abstraction |
+|----------|-------------|
+| Memory | alloc, free, mmap |
 | CPU | task_create, yield |
 | GPU | inference, render |
-| 통신 | net_send, net_recv |
-| 카메라 | capture_image, capture_video |
-| 스피커 | audio_play |
-| 마이크 | audio_capture |
+| Network | net_send, net_recv |
+| Camera | capture_image, capture_video |
+| Speaker | audio_play |
+| Microphone | audio_capture |
 
 ## 6. Microkernel
 
-- 프로세스/스레드 스케줄링
-- 가상 메모리
-- 인터럽트 핸들러
-- IPC (프로세스 간 통신)
+- Process/thread scheduling
+- Virtual memory
+- Interrupt handlers
+- IPC (inter-process communication)

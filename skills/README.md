@@ -1,14 +1,23 @@
 # AIOS Skill Runtime
 
-스킬/MCP 호환 모듈의 로드, 실행, 격리.
+Load, execute, and isolate skills/MCP-compatible modules. Skills are the installable AI add-ons surfaced through the App Store.
 
-## 스킬 형식 (SKILL.md)
+## Prototype
+
+Phase 1 implementation lives in `prototype/` (TypeScript):
+
+```bash
+cd prototype && npm run skills
+```
+
+## Skill format (SKILL.md)
 
 ```markdown
 ---
 name: my-skill
 description: Does something useful
 version: 0.1.0
+tools: [{"name":"my_tool","description":"...","inputSchema":{...}}]
 ---
 
 # My Skill
@@ -16,12 +25,11 @@ version: 0.1.0
 Instructions for the AI...
 ```
 
-## 설치 위치
+## Install paths
 
-- 사용자: `~/.aios/skills/`
-- 프로젝트: `.aios/skills/`
+- User: `~/.aios/skills/`
+- Project: `.aios/skills/`
 
-## MCP 호환
+## MCP compatibility
 
-스킬은 MCP(Model Context Protocol) 도구 정의를 포함할 수 있으며,
-AI Core가 해당 도구를 동적 호출한다.
+Skills expose tools in MCP format. See [docs/MCP_SPEC.md](../docs/MCP_SPEC.md) for the full spec.

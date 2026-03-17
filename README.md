@@ -1,84 +1,96 @@
 # AIOS — AI-Native Operating System
 
-> 기존 OS를 완전히 대체하는, AI가 모든 단말 기능을 직접 제어하는 운영체제
+> An operating system that runs **only with AI**. No traditional apps — AI directly controls all device functions.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 비전
+> **Status**: Not yet validated on physical hardware. This project aims to align with the all-AI device development direction.
 
-AIOS는 **앱 기반이 아닌 AI 기반**의 운영체제입니다.
+## Vision
 
-- **AI가 1차 인터페이스**: 텍스트, 음성, 사진, 동영상으로 모든 기능 제어
-- **앱 → 스킬**: 기존 앱은 MCP/스킬 형태의 설치형 모듈로 진화
-- **하이브리드 연산**: 기본 기능은 내장 AI, 고성능·외부 데이터는 온라인 연동
+AIOS is an **AI-only OS**: the system operates solely through AI, with no conventional app launcher or app-based workflows.
+
+- **AI-only interface**: All interactions go through AI (text, voice, photo, video)
+- **App Store**: A marketplace for adding diverse AI capabilities — browse, install, and manage skills that extend what the AI can do
+- **Hybrid compute**: Built-in on-device AI for basics; cloud for heavy tasks or external data
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  사용자: 텍스트 · 음성 · 이미지 · 동영상                 │
+│  User: Text · Voice · Image · Video                      │
 └─────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────┐
-│  AI Core — 의도 해석 · 작업 분해 · 실행 오케스트레이션    │
+│  AI Core — Intent · Task Decomposition · Orchestration   │
 └─────────────────────────────────────────────────────────┘
          │                    │                    │
          ▼                    ▼                    ▼
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│ 온디바이스   │    │  스킬/MCP     │    │  클라우드     │
-│ AI (기본)    │    │  모듈 (설치)  │    │  AI (고부하)  │
+│ On-Device    │    │  App Store   │    │  Cloud       │
+│ AI (basic)   │    │  (skills/    │    │  AI (heavy)  │
+│              │    │  AI add-ons) │    │              │
 └──────────────┘    └──────────────┘    └──────────────┘
          │                    │                    │
          └────────────────────┼────────────────────┘
                               ▼
 ┌─────────────────────────────────────────────────────────┐
 │  HAL (Hardware Abstraction Layer)                        │
-│  메모리 · CPU · GPU · 통신 · 카메라 · 스피커 · 마이크    │
+│  Memory · CPU · GPU · Comms · Camera · Speaker · Mic     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## 프로젝트 구조
+## Project Structure
 
 ```
 aios-project/
-├── kernel/          # 미니멀 마이크로커널
-├── hal/              # Hardware Abstraction Layer
-├── ai-core/          # AI 인터페이스 코어
-├── skills/           # 스킬/MCP 모듈 런타임
-├── drivers/          # 하드웨어 드라이버
-├── tools/            # 빌드 · 에뮬레이션 도구
-└── docs/             # 설계 문서
+├── kernel/          # Minimal microkernel
+├── hal/             # Hardware Abstraction Layer
+├── ai-core/         # AI interface core
+├── skills/          # Skill runtime (App Store items = installable skills)
+├── drivers/         # Hardware drivers
+├── tools/           # Build · emulation tools
+└── docs/            # Design docs
 ```
 
-## 로드맵
+## Roadmap
 
-| Phase | 목표 |
+| Phase | Goal |
 |-------|------|
-| **Phase 1** | AI 코어 + 스킬 런타임 (호스트 환경에서 검증) |
-| **Phase 2** | HAL + 미니멀 커널 (x86-64 / ARM) |
-| **Phase 3** | 베어메탈 부팅 · 드라이버 · 멀티모달 I/O |
+| **Phase 1** | AI core + skill runtime (host validation) |
+| **Phase 2** | HAL + minimal kernel (x86-64 / ARM) |
+| **Phase 3** | Bare-metal boot · drivers · multimodal I/O |
+| **Phase 4** | App Store — browse, install, manage AI add-ons |
 
-## 개발 환경
+## Development
 
-- **Rust** (nightly): 커널, HAL, 드라이버
-- **Python/TypeScript**: AI 코어 프로토타입 (Phase 1)
+- **Rust** (nightly): kernel, HAL, drivers
+- **Python/TypeScript**: AI core prototype (Phase 1)
 
-## 시작하기
+## Getting Started
 
 ```bash
-# 저장소 클론
-git clone https://github.com/YOUR_USERNAME/aios-project.git
+git clone https://github.com/minsu18/aios-project.git
 cd aios-project
 
-# Phase 1: AI 코어 + 스킬 런타임 (호스트)
-cd ai-core && cargo build   # 또는 python/ts 프로토타입
+# Phase 1: AI core + skill runtime (host validation)
+cd prototype && npm install && npm run demo
+
+# List loaded skills and MCP tools
+cd prototype && npm run skills
+
+# Phase 2: Kernel + QEMU boot (requires Rust nightly, qemu-system-x86_64)
+cargo run -p aios-boot
+
+# Rust crates (kernel, HAL, ai-core)
+cargo build
 ```
 
-> **GitHub 푸시**: [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) 참고
+> **Push to GitHub**: See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md)
 
-## 기여
+## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md)를 참고해 주세요.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 라이선스
+## License
 
 MIT License — [LICENSE](LICENSE)

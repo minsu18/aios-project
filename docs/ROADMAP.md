@@ -1,17 +1,20 @@
-# AIOS 로드맵
+# AIOS Roadmap
 
-## Phase 1 (현재)
-- [x] 프로젝트 구조
-- [ ] AI 코어 프로토타입 (Python/TS)
-- [ ] 스킬 런타임 프로토타입
-- [ ] MCP 호환 스펙
+## Phase 1 (current)
+- [x] Project structure
+- [x] AI core prototype (Python/TS)
+- [x] Skill runtime prototype
+- [x] MCP-compatible spec
 
 ## Phase 2
-- [ ] x86-64 또는 ARM 미니멀 커널
-- [ ] HAL 구현
-- [ ] QEMU 부팅
+- [x] x86-64 or ARM minimal kernel
+- [x] HAL implementation
+- [x] QEMU boot
 
 ## Phase 3
-- [ ] 베어메탈 부팅
-- [ ] 드라이버: 카메라, 오디오, 통신
-- [ ] 멀티모달 I/O 파이프라인
+- [ ] Bare-metal boot
+- [ ] Drivers: camera, audio, comms
+- [ ] Multimodal I/O pipeline
+
+## Phase 4
+- [ ] App Store — browse, install, manage AI add-ons
