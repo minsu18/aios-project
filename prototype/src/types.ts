@@ -14,6 +14,8 @@ export interface MultimodalInput {
   voice?: Buffer | string;
   /** Image: raw bytes or base64 */
   image?: Buffer | string;
+  /** Image prompt (optional; used when modality is image) */
+  imagePrompt?: string;
   /** Video: raw bytes or base64 */
   video?: Buffer | string;
 }

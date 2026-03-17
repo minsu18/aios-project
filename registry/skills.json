@@ -1,0 +1,8 @@
+[
+  {
+    "name": "example",
+    "description": "Example skill with get_time and echo tools",
+    "version": "0.1.0",
+    "source": "local:.aios/skills/example"
+  }
+]

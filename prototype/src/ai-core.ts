@@ -101,31 +101,41 @@ export async function process(
 }
 
 /**
- * Extract text from multimodal input for processing.
- * Voice/image/video require STT/vision (Phase 3); for now return placeholder.
+ * Extract text from multimodal input. Uses STT for voice, Vision for image.
  */
-function extractTextFromMultimodal(input: MultimodalInput): string {
+async function extractTextFromMultimodal(input: MultimodalInput): Promise<string> {
   if (input.text) return input.text;
-  if (input.modality === "voice") {
-    return "[Voice input - STT not yet implemented. Use text.]";
+  if (input.modality === "voice" && input.voice) {
+    try {
+      const { transcribeVoice } = await import("./multimodal.js");
+      return await transcribeVoice(input.voice);
+    } catch (err) {
+      return `[Voice STT error: ${String(err)}]`;
+    }
   }
-  if (input.modality === "image") {
-    return "[Image input - Vision not yet implemented. Use text.]";
+  if (input.modality === "image" && input.image) {
+    try {
+      const { describeImage } = await import("./multimodal.js");
+      const prompt = input.imagePrompt ?? "Describe this image in detail.";
+      return await describeImage(input.image, prompt);
+    } catch (err) {
+      return `[Image vision error: ${String(err)}]`;
+    }
   }
   if (input.modality === "video") {
-    return "[Video input - Multimodal pipeline not yet implemented. Use text.]";
+    return "[Video input - Multimodal pipeline not yet implemented. Use image or voice.]";
   }
   return "";
 }
 
 /**
- * Process multimodal input. Text is handled; voice/image/video return placeholder.
+ * Process multimodal input. Text/voice/image supported via STT and Vision APIs.
  */
 export async function processMultimodal(
   input: MultimodalInput,
   skills: Skill[] = []
 ): Promise<AIResponse> {
-  const text = extractTextFromMultimodal(input);
+  const text = await extractTextFromMultimodal(input);
   if (!text || text.startsWith("[")) {
     return {
       target: "cloud",

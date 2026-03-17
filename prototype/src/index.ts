@@ -12,7 +12,7 @@
 
 import { process as processInput } from "./ai-core.js";
 import { loadAllSkills, listTools } from "./skill-runtime.js";
-import { installSkill, removeSkill } from "./app-store.js";
+import { installSkill, removeSkill, browseRegistry, installFromRegistry } from "./app-store.js";
 
 async function main() {
   const cmd = process.argv[2];
@@ -43,6 +43,32 @@ async function main() {
       console.log(`Removed skill: ${arg}`);
     } else {
       console.error(`Remove failed: ${result.error}`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (cmd === "browse") {
+    try {
+      const skills = await browseRegistry();
+      console.log("Available skills in registry:", skills.length);
+      for (const s of skills) {
+        console.log(`  ${s.name} v${s.version}: ${s.description}`);
+        console.log(`    source: ${s.source}`);
+      }
+    } catch (err) {
+      console.error("Browse failed:", err);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (cmd === "install-from-registry" && arg) {
+    const result = await installFromRegistry(arg);
+    if (result.ok) {
+      console.log(`Installed skill from registry: ${arg}`);
+    } else {
+      console.error(`Install failed: ${result.error}`);
       process.exit(1);
     }
     return;
@@ -84,6 +110,41 @@ async function main() {
     return;
   }
 
+  if (cmd === "voice" && arg) {
+    const { readFileSync } = await import("node:fs");
+    const { processMultimodal } = await import("./ai-core.js");
+    try {
+      const audio = readFileSync(arg);
+      const result = await processMultimodal(
+        { modality: "voice", voice: audio },
+        skills
+      );
+      console.log(JSON.stringify(result, null, 2));
+    } catch (err) {
+      console.error("Voice processing failed:", err);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (cmd === "image" && arg) {
+    const { readFileSync } = await import("node:fs");
+    const { processMultimodal } = await import("./ai-core.js");
+    const prompt = process.argv.slice(4).join(" ") || "Describe this image.";
+    try {
+      const image = readFileSync(arg);
+      const result = await processMultimodal(
+        { modality: "image", image, imagePrompt: prompt },
+        skills
+      );
+      console.log(JSON.stringify(result, null, 2));
+    } catch (err) {
+      console.error("Image processing failed:", err);
+      process.exit(1);
+    }
+    return;
+  }
+
   // Default: single prompt from args or stdin
   const input = process.argv.slice(2).join(" ").trim();
   if (input) {
@@ -91,7 +152,7 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log("AIOS Phase 1 Prototype");
-    console.log("Usage: node dist/index.js [prompt] | demo | skills");
+    console.log("Usage: node dist/index.js [prompt] | demo | skills | install <path> | remove <name> | voice <file> | image <file> [prompt]");
   }
 }
 

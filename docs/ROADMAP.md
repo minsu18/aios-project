@@ -19,8 +19,9 @@
 ## Phase 3
 - [ ] Bare-metal boot
 - [ ] Drivers: camera, audio, comms (real hardware bindings)
-- [ ] Multimodal I/O pipeline (STT, vision)
+- [x] Multimodal I/O pipeline (STT Whisper, Vision API)
 
 ## Phase 4
 - [x] App Store — install, remove skills
-- [ ] App Store — browse (registry), manage (update, list remote)
+- [x] App Store — browse registry, install-from-registry
+- [ ] App Store — remote registry URL, manage (update)
