@@ -73,6 +73,8 @@ cd aios-project
 cd ai-core && cargo build   # 또는 python/ts 프로토타입
 ```
 
+> **GitHub 푸시**: [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) 참고
+
 ## 기여
 
 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고해 주세요.
