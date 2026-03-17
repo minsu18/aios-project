@@ -4,4 +4,13 @@ version = "0.1.0"
 edition = "2021"
 description = "AIOS hardware drivers - camera, audio, comms"
 
+[features]
+default = []
+# Linux host bindings: V4L2 (camera), ALSA (audio), std::net (comms)
+host = ["rscam", "alsa", "libc"]
+
 [dependencies]
+# Host feature: Linux hardware access
+rscam = { version = "0.5", optional = true }
+alsa = { version = "0.9", optional = true }
+libc = { version = "0.2", optional = true }

@@ -11,6 +11,9 @@ pub mod gpu;
 pub mod memory;
 pub mod network;
 
+#[cfg(feature = "llama")]
+mod llama_inference;
+
 pub use audio::*;
 pub use camera::*;
 pub use cpu::*;

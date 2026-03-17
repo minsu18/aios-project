@@ -1,13 +1,13 @@
 # Inference Backends
 
-Set `AIOS_INFERENCE` to switch backends.
+Set the `AIOS_INFERENCE` environment variable to switch backends.
 
 | Value | Description |
 |-------|-------------|
 | placeholder | Rule-based, no network (default) |
 | openai | Cloud; needs OPENAI_API_KEY |
 | anthropic | Cloud; needs ANTHROPIC_API_KEY |
-| ollama | Local; run `ollama serve` |
+| ollama | Local; run `ollama serve` and `ollama pull <model>` |
 | transformers | Local; @huggingface/transformers |
 
 ## Ollama

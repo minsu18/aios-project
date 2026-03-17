@@ -23,7 +23,9 @@ AIOS_OFFLINE=1 npm run demo
 
 ## Fallback Order
 
-1. Skill tool match (time, weather, calc, echo)
-2. On-device LLM (if loaded)
-3. Rule-based / keyword response
-4. Cloud (only when online and enabled)
+(First tried → last resort)
+
+1. **Skill tool match** — time, weather, calc, echo
+2. **On-device LLM** — if model loaded (Ollama, Transformers)
+3. **Rule-based** — keyword response
+4. **Cloud** — only when online and enabled

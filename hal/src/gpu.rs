@@ -29,17 +29,12 @@ pub fn inference(_model_id: &str, _input: &[u8]) -> Result<Vec<u8>, &'static str
     Err("llama.cpp not linked. Build with --features llama. See docs/HAL_LLAMA_CPP.md")
 }
 
-/// llama.cpp-backed inference (stub for when feature is enabled)
+/// llama.cpp-backed inference via llama-cpp-2
 #[cfg(feature = "llama")]
 pub fn inference(model_id: &str, input: &[u8]) -> Result<Vec<u8>, &'static str> {
-    // TODO: FFI to llama.cpp
-    // - llama_backend_init()
-    // - llama_load_model_from_file()
-    // - llama_new_context_with_model()
-    // - llama_decode() + llama_sampling in a loop
-    // - llama_backend_free()
-    let _ = (model_id, input);
-    Err("llama feature enabled but FFI not yet implemented")
+    let prompt = std::str::from_utf8(input).map_err(|_| "input is not valid UTF-8")?;
+    super::llama_inference::run_inference(model_id, prompt)
+        .map_err(|_| "llama inference failed; check model path and logs")
 }
 
 /// Render framebuffer to display (placeholder)

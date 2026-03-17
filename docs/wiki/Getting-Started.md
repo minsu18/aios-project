@@ -21,7 +21,7 @@ npm run demo
 | Backend | Command | Notes |
 |---------|---------|------|
 | placeholder (default) | `npm run demo` | Rule-based, no network |
-| Ollama | `AIOS_INFERENCE=ollama npm run demo` | Run `ollama serve` first |
+| Ollama | `AIOS_INFERENCE=ollama npm run demo` | Run `ollama serve` first; then `ollama pull llama3.2` |
 | Transformers | `AIOS_INFERENCE=transformers npm run demo` | First run downloads model |
 | Offline mode | `AIOS_OFFLINE=1 npm run demo` | No cloud calls |
 

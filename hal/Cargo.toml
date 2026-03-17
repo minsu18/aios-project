@@ -6,8 +6,10 @@ description = "AIOS Hardware Abstraction Layer - memory, CPU, GPU, comms, camera
 
 [features]
 default = []
-# Enable llama.cpp FFI for on-device inference (requires libllama built for target)
-llama = []
+# Enable llama.cpp for on-device inference (via llama-cpp-2 crate)
+llama = ["dep:llama-cpp-2", "dep:encoding_rs"]
 
 [dependencies]
 # aios-kernel = { path = "../kernel" }  # Phase 2
+llama-cpp-2 = { version = "0.1", optional = true }
+encoding_rs = { version = "0.8", optional = true }

@@ -19,7 +19,7 @@
 ## Phase 3
 - [x] VM simulation (configurable specs, boot + prototype)
 - [x] Raspberry Pi 3/4 kernel (kernel8.img, UART serial)
-- [ ] Drivers: camera, audio, comms (real hardware bindings)
+- [x] Drivers: camera, audio, comms (real hardware bindings — `--features host` on Linux)
 - [x] Multimodal I/O pipeline (STT Whisper, Vision API)
 
 ## Phase 4
@@ -32,4 +32,4 @@
 - [x] Architecture: built-in on-device AI, works without network
 - [x] On-device LLM (prototype): Ollama, Transformers.js backends
 - [x] HAL gpu.inference: interface + llama.cpp design (docs/HAL_LLAMA_CPP.md)
-- [ ] HAL llama.cpp FFI: real bare-metal inference
+- [x] HAL llama.cpp: llama-cpp-2 crate integration

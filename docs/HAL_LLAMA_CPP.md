@@ -1,66 +1,36 @@
 # HAL + llama.cpp Integration
 
-This document describes how to connect AIOS HAL's `gpu.inference` to llama.cpp for bare-metal on-device inference.
+This document describes how AIOS HAL's `gpu.inference` connects to llama.cpp for on-device inference.
 
 ## Overview
 
 - **hal/src/gpu.rs** exposes `inference(model_id, input) -> Result<Vec<u8>, &str>`.
-- When built with `--features llama`, the implementation will call into llama.cpp via C FFI.
+- When built with `--features llama`, uses the **llama-cpp-2** crate (Rust bindings to llama.cpp).
 - Models: GGUF format (e.g. TinyLlama, Phi-2, Qwen2-0.5B quantized).
 
-## Build Steps (Future)
+## Build and Run
 
-### 1. Build llama.cpp for target
+### 1. Build HAL with llama feature
 
 ```bash
-git clone https://github.com/ggerganov/llama.cpp
-cd llama.cpp
-mkdir build && cd build
-
-# For host (x86_64)
-cmake .. -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF
-cmake --build . --config Release
-
-# For Raspberry Pi (aarch64)
-cmake .. -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DLLAMA_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
-cmake --build . --config Release
+cargo build -p aios-hal --features llama
 ```
 
-Output: `libllama.a` (static) or `libllama.so` (shared).
+The **llama-cpp-2** crate vendored/builds llama.cpp automatically.
 
-### 2. Configure aios-hal
+### 2. Run inference example
 
-Add to `hal/build.rs` (when implementing):
+Download a GGUF model:
 
-```rust
-fn main() {
-    let llama_path = env::var("LLAMA_CPP_PATH").unwrap_or_else(|_| "path/to/llama.cpp".into());
-    println!("cargo:rustc-link-search=native={}/build", llama_path);
-    println!("cargo:rustc-link-lib=static=llama");
-    println!("cargo:rerun-if-changed=build.rs");
-}
+```bash
+curl -L -o tinyllama.gguf https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 ```
 
-### 3. FFI bindings
+Run:
 
-Create `hal/src/llama_ffi.rs` with `#[repr(C)]` structs and `extern "C"` declarations matching `llama.h`:
-
-- `llama_backend_init()`
-- `llama_load_model_from_file()`
-- `llama_new_context_with_model()`
-- `llama_decode()`
-- `llama_sampling_*` for token selection
-- `llama_backend_free()`
-
-### 4. Wire gpu::inference
-
-In `gpu.rs` (with `#[cfg(feature = "llama")]`):
-
-1. Parse `model_id` as path (or resolve from `AIOS_MODEL_PATH`).
-2. Load model and context.
-3. Tokenize input (use llama.cpp tokenizer or integrate sentencepiece).
-4. Run decode loop until EOS or max_tokens.
-5. Decode output tokens to UTF-8.
+```bash
+cargo run -p aios-hal --features llama --example llama_inference -- ./tinyllama.gguf "What is AI?"
+```
 
 ## Target Considerations
 

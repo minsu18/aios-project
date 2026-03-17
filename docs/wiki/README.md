@@ -14,8 +14,8 @@ Markdown files for [GitHub Wiki](https://github.com/minsu18/aios-project/wiki).
 | Inference-Backends.md | Inference Backends |
 | Offline-and-On-Device.md | Offline & On-Device |
 
-## Usage
+## Sync to GitHub Wiki
 
-1. Go to your repo → Wiki tab → Create/Edit page.
-2. Copy the content from each `.md` file into the corresponding wiki page.
-3. GitHub wiki link format: `[[Page-Name]]` for internal links.
+1. Repo → **Wiki** tab → Edit each page
+2. Copy content from the matching `.md` file
+3. **Offline-and-On-Device**: Fallback order must be Skill → On-device LLM → Rule-based → Cloud (first tried to last resort)

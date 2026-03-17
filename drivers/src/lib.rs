@@ -3,7 +3,13 @@
 //! Hardware driver modules. Each driver implements the `Driver` trait
 //! and is invoked by the HAL when the kernel has initialized the hardware.
 //!
-//! Phase 2–3: Stub implementations. Real drivers require bare-metal or OS bindings.
+//! - Default: stubs for bare-metal
+//! - `host` feature: real Linux bindings (V4L2 camera, ALSA audio, std::net comms)
+
+#![cfg_attr(not(feature = "host"), no_std)]
+
+#[cfg(not(feature = "host"))]
+extern crate alloc;
 
 use core::fmt;
 
@@ -32,3 +38,7 @@ pub trait Driver {
 pub mod camera;
 pub mod audio;
 pub mod comms;
+
+pub use camera::capture_image;
+pub use audio::{play, capture};
+pub use comms::{udp_send, udp_recv};
