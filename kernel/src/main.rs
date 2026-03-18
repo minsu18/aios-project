@@ -9,6 +9,7 @@ use bootloader_api::entry_point;
 use bootloader_api::BootInfo;
 use bootloader_api::info::MemoryRegionKind;
 use core::arch::asm;
+use core::fmt::Write;
 use core::panic::PanicInfo;
 
 entry_point!(kernel_main);
@@ -68,19 +69,17 @@ fn write_decimal(mut n: u64) {
 
 /// Initialize COM1 serial port (0x3F8)
 fn init_serial() {
-    unsafe {
-        // Disable interrupts
-        outb(0x3F8 + 1, 0x00);
-        // Enable DLAB
-        outb(0x3F8 + 3, 0x80);
-        // Divisor low (115200 / 3 = 38400 baud)
-        outb(0x3F8 + 0, 0x03);
-        outb(0x3F8 + 1, 0x00);
-        // 8N1, clear DLAB
-        outb(0x3F8 + 3, 0x03);
-        outb(0x3F8 + 2, 0xC7); // FIFO
-        outb(0x3F8 + 4, 0x0B); // IRQs enabled
-    }
+    // Disable interrupts
+    outb(0x3F8 + 1, 0x00);
+    // Enable DLAB
+    outb(0x3F8 + 3, 0x80);
+    // Divisor low (115200 / 3 = 38400 baud)
+    outb(0x3F8 + 0, 0x03);
+    outb(0x3F8 + 1, 0x00);
+    // 8N1, clear DLAB
+    outb(0x3F8 + 3, 0x03);
+    outb(0x3F8 + 2, 0xC7); // FIFO
+    outb(0x3F8 + 4, 0x0B); // IRQs enabled
 }
 
 fn outb(port: u16, value: u8) {
@@ -104,13 +103,18 @@ fn inb(port: u16) -> u8 {
     value
 }
 
+struct SerialWriter;
+impl Write for SerialWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        serial_write(s.as_bytes());
+        Ok(())
+    }
+}
+
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     serial_write(b"PANIC: ");
-    if let Some(s) = info.message().and_then(|m| m.as_str()) {
-        serial_write(s.as_bytes());
-    }
-    serial_write(b"\r\n");
+    let _ = writeln!(SerialWriter, "{}", info);
     loop {
         unsafe { asm!("hlt") }
     }
