@@ -20,8 +20,8 @@ jobs:
           components: rustfmt, llvm-tools, rust-src
           targets: aarch64-unknown-none
 
-      - name: Install ARM toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-none-elf
+      - name: Install ARM toolchain / llvm-objcopy
+        run: sudo apt-get update && sudo apt-get install -y llvm
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
@@ -46,8 +46,8 @@ jobs:
         with:
           targets: aarch64-unknown-none
 
-      - name: Install QEMU and ARM toolchain
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-aarch64 gcc-aarch64-none-elf
+      - name: Install QEMU and llvm-objcopy
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-aarch64 llvm
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
