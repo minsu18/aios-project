@@ -7,6 +7,8 @@ fn main() {
     let kernel_path = build_kernel();
     if kernel_path.is_none() {
         println!("cargo:warning=Kernel build skipped (run: cargo build -p aios-kernel --target x86_64-unknown-none)");
+        // Set placeholder so main.rs compiles; binary will fail at runtime if run
+        println!("cargo:rustc-env=BIOS_PATH={}/bios.img", out_dir.display());
         return;
     }
     let kernel = kernel_path.unwrap();
