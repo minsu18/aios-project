@@ -10,7 +10,7 @@ TypeScript prototype for AI core and skill runtime. Runs on host for validation 
   - `ollama`: Local LLM via Ollama (run `ollama serve`, `ollama pull llama3.2`). Optional: `AIOS_OLLAMA_MODEL`, `AIOS_OLLAMA_HOST`
   - `transformers`: Local LLM via @huggingface/transformers (first run downloads model). Optional: `AIOS_TRANSFORMERS_MODEL`
 - **Offline-first**: `AIOS_OFFLINE=1` forces all inference on-device (no cloud calls). Built-in skills (time, weather, calculator, echo) always work without network.
-- **Multimodal I/O**: Voice (Whisper STT), image (Vision API) — `voice <file>`, `image <file> [prompt]`
+- **Multimodal I/O**: Voice (Whisper STT), image (Vision API) — `voice <file>`, `voice capture` (Linux/mic), `image <file> [prompt]`, `image capture [prompt]` (Linux/camera)
 - **Skill Runtime**: Load SKILL.md from `~/.aios/skills/` or `.aios/skills/`
 - **App Store CLI**: Install, remove, browse registry, install-from-registry
 
@@ -39,9 +39,11 @@ node dist/index.js update [skill-name]
 # Remove installed skill
 node dist/index.js remove <skill-name>
 
-# Multimodal: voice (WAV/MP3) or image (requires API key)
+# Multimodal: voice or image (file path, or capture from hardware on Linux)
 node dist/index.js voice path/to/audio.wav
+node dist/index.js voice capture   # Linux: mic via driver-bridge
 node dist/index.js image path/to/image.png "What's in this image?"
+node dist/index.js image capture "Describe"   # Linux: camera via driver-bridge
 
 # Single prompt (JSON output)
 node dist/index.js "What time is it?"

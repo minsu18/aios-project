@@ -5,6 +5,7 @@ members = [
     "kernel-rpi",
     "hal",
     "hal-bare",
+    "driver-bridge",
     "ai-core",
     "boot",
     "drivers",

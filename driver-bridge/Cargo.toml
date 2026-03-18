@@ -1,0 +1,15 @@
+[package]
+name = "aios-driver-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "CLI bridge: exposes aios-drivers to Node/prototype"
+
+[[bin]]
+name = "aios-driver-bridge"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+aios-drivers = { path = "../drivers", features = ["host"] }

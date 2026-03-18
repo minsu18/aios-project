@@ -22,6 +22,16 @@ Uses `qemu-system-aarch64` with raspi4b machine. Serial output in terminal. Exit
 
 **Requirements:** QEMU 9.0+ with `qemu-system-aarch64` (macOS: `brew install qemu`)
 
+## Driver Bridge (Linux)
+
+Build the driver bridge for hardware capture (camera, mic) from the prototype:
+
+```bash
+cargo build -p aios-driver-bridge --release
+```
+
+**Requires Linux** (V4L2, ALSA). Then `voice capture` and `image capture` work in the prototype. See [driver-bridge/README.md](../driver-bridge/README.md).
+
 ## VM Simulation
 
 Boot AIOS kernel in QEMU with configurable specs, then run the AI prototype:

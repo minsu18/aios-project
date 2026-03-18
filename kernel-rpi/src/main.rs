@@ -38,7 +38,7 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     aios_hal_bare::init();
     uart_write(b"[ 0.001] HAL init\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
-    uart_write(b"\r\n>> AIOS kernel ready. Commands: help, time, or type to echo\r\n>> ");
+    uart_write(b"\r\n>> AIOS kernel ready. Commands: help, time, clear, version\r\n>> ");
 
     conversation_loop();
 }
@@ -108,7 +108,7 @@ fn handle_command(line: &str) {
         return;
     }
     if eq_ignore_ascii_case(line, "help") {
-        uart_write(b"Commands: help, time. Or type anything to echo. (Ctrl+A X exits QEMU)");
+        uart_write(b"Commands: help, time, clear, version. Or type to echo. (Ctrl+A X exits QEMU)");
     } else if eq_ignore_ascii_case(line, "time") {
         let (ticks, freq) = aios_hal_bare::timer::read();
         let secs = if freq > 0 { ticks / freq } else { 0 };
@@ -116,6 +116,10 @@ fn handle_command(line: &str) {
             &mut UartWriter,
             core::format_args!("Time: {} s since boot (ticks={}, freq={} Hz)", secs, ticks, freq),
         );
+    } else if eq_ignore_ascii_case(line, "clear") {
+        uart_write(b"\x1b[2J\x1b[H"); /* ANSI clear screen, cursor home */
+    } else if eq_ignore_ascii_case(line, "version") {
+        uart_write(b"AIOS kernel-rpi 0.1.0 (aarch64 bare-metal)");
     } else {
         uart_write(line.as_bytes());
     }

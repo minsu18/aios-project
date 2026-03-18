@@ -194,15 +194,27 @@ async function main() {
     return;
   }
 
-  if (cmd === "voice" && arg) {
-    const { readFileSync } = await import("node:fs");
+  if (cmd === "voice") {
     const { processMultimodal } = await import("./ai-core.js");
+    const { captureFromMic, isDriverBridgeAvailable } = await import("./driver-bridge.js");
     try {
-      const audio = readFileSync(arg);
-      const result = await processMultimodal(
-        { modality: "voice", voice: audio },
-        skills
-      );
+      let audio: Buffer;
+      const useCapture = arg === "capture";
+      if (arg && !useCapture) {
+        const { readFileSync } = await import("node:fs");
+        audio = readFileSync(arg);
+      } else if (isDriverBridgeAvailable()) {
+        const captured = captureFromMic(48000);
+        if (!captured) {
+          console.error("Voice capture failed (driver-bridge). Use voice <file> or run on Linux with ALSA.");
+          process.exit(1);
+        }
+        audio = captured;
+      } else {
+        console.error("Usage: voice <file> | voice capture (requires Linux + aios-driver-bridge)");
+        process.exit(1);
+      }
+      const result = await processMultimodal({ modality: "voice", voice: audio }, skills);
       console.log(JSON.stringify(result, null, 2));
     } catch (err) {
       console.error("Voice processing failed:", err);
@@ -211,12 +223,27 @@ async function main() {
     return;
   }
 
-  if (cmd === "image" && arg) {
-    const { readFileSync } = await import("node:fs");
+  if (cmd === "image") {
     const { processMultimodal } = await import("./ai-core.js");
+    const { captureFromCamera, isDriverBridgeAvailable } = await import("./driver-bridge.js");
+    const useCapture = !arg || arg === "capture";
     const prompt = process.argv.slice(4).join(" ") || "Describe this image.";
     try {
-      const image = readFileSync(arg);
+      let image: Buffer;
+      if (arg && arg !== "capture") {
+        const { readFileSync } = await import("node:fs");
+        image = readFileSync(arg);
+      } else if (isDriverBridgeAvailable()) {
+        const captured = captureFromCamera();
+        if (!captured) {
+          console.error("Image capture failed (driver-bridge). Use image <file> or run on Linux with V4L2.");
+          process.exit(1);
+        }
+        image = captured;
+      } else {
+        console.error("Usage: image <file> [prompt] | image capture [prompt] (requires Linux + aios-driver-bridge)");
+        process.exit(1);
+      }
       const result = await processMultimodal(
         { modality: "image", image, imagePrompt: prompt },
         skills
@@ -260,7 +287,7 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log("AIOS Phase 1 Prototype");
-    console.log("Usage: node dist/index.js [prompt] | demo | skills | simulate | interactive | install <path> | remove <name> | browse | install-from-registry <name> | update [name] | voice <file> | image <file> [prompt]");
+    console.log("Usage: [prompt] | demo | skills | simulate | interactive | voice <file>|capture | image <file>|capture [prompt] | install <path> | remove <name> | browse | install-from-registry <name> | update [name]");
   }
 }
 
