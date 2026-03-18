@@ -1,6 +1,8 @@
 # AIOS Kernel — Raspberry Pi 3/4
 
-Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with echo loop (keyboard input echoed back).
+Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with rule-based conversation loop.
+
+**Commands:** `help`, `time`, or type anything to echo.
 
 ## Requirements
 

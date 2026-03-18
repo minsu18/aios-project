@@ -1,6 +1,6 @@
 //! AIOS Kernel — Raspberry Pi 3/4 (aarch64)
 //!
-//! Bare-metal boot, PL011 UART I/O, echo loop.
+//! Bare-metal boot, PL011 UART I/O, rule-based conversation loop.
 
 #![no_std]
 #![no_main]
@@ -37,12 +37,9 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     uart_write(b"\r\n[ 0.000] UART init\r\n");
     uart_write(b"[ 0.001] HAL init (stub)\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
-    uart_write(b"\r\n>> AIOS kernel ready. Type to echo (Ctrl+A X to exit QEMU)\r\n\r\n");
+    uart_write(b"\r\n>> AIOS kernel ready. Commands: help, time, or type to echo\r\n>> ");
 
-    loop {
-        let b = uart_read_byte();
-        unsafe { uart_putc(b) }
-    }
+    conversation_loop();
 }
 
 unsafe fn uart_init() {
@@ -70,6 +67,53 @@ unsafe fn uart_read_byte() -> u8 {
     let base = UART_BASE as *const u32;
     while base.add(UARTFR as usize / 4).read_volatile() & UARTFR_RXFE != 0 {}
     base.add(UARTDR as usize / 4).read_volatile() as u8
+}
+
+const LINE_BUF: usize = 128;
+
+fn conversation_loop() -> ! {
+    let mut buf = [0u8; LINE_BUF];
+    let mut len = 0usize;
+
+    loop {
+        let b = unsafe { uart_read_byte() };
+        unsafe { uart_putc(b) }
+
+        if b == b'\r' || b == b'\n' {
+            uart_write(b"\r\n");
+            if len > 0 {
+                let line = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                let line = line.trim();
+                handle_command(line);
+                uart_write(b"\r\n");
+                len = 0;
+            }
+            uart_write(b">> ");
+        } else if len < LINE_BUF - 1 {
+            buf[len] = b;
+            len += 1;
+        }
+    }
+}
+
+fn handle_command(line: &str) {
+    if line.is_empty() {
+        return;
+    }
+    if eq_ignore_ascii_case(line, "help") {
+        uart_write(b"Commands: help, time. Or type anything to echo. (Ctrl+A X exits QEMU)");
+    } else if eq_ignore_ascii_case(line, "time") {
+        uart_write(b"Time: not available (no RTC in bare-metal)");
+    } else {
+        uart_write(line.as_bytes());
+    }
+}
+
+fn eq_ignore_ascii_case(a: &str, b: &str) -> bool {
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .all(|(x, y)| x.eq_ignore_ascii_case(&y))
 }
 
 struct UartWriter;
