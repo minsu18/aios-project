@@ -5,6 +5,7 @@
 
 #![no_std]
 
+pub mod inference;
 pub mod timer;
 
 /// Initialize HAL. Called by kernel after early boot.

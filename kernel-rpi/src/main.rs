@@ -38,7 +38,7 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     aios_hal_bare::init();
     uart_write(b"[ 0.001] HAL init\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
-    uart_write(b"\r\n>> AIOS kernel ready. Commands: help, time, clear, version\r\n>> ");
+    uart_write(b"\r\n>> AIOS kernel ready. help, time, clear, version, weather, calc, ask\r\n>> ");
 
     conversation_loop();
 }
@@ -108,7 +108,7 @@ fn handle_command(line: &str) {
         return;
     }
     if eq_ignore_ascii_case(line, "help") {
-        uart_write(b"Commands: help, time, clear, version. Or type to echo. (Ctrl+A X exits QEMU)");
+        uart_write(b"Commands: help, time, clear, version, weather [loc], calc <expr>, ask <q>. (Ctrl+A X exits)");
     } else if eq_ignore_ascii_case(line, "time") {
         let (ticks, freq) = aios_hal_bare::timer::read();
         let secs = if freq > 0 { ticks / freq } else { 0 };
@@ -120,9 +120,52 @@ fn handle_command(line: &str) {
         uart_write(b"\x1b[2J\x1b[H"); /* ANSI clear screen, cursor home */
     } else if eq_ignore_ascii_case(line, "version") {
         uart_write(b"AIOS kernel-rpi 0.1.0 (aarch64 bare-metal)");
+    } else if line.len() > 4 && eq_ignore_ascii_case(&line[..4], "ask ") {
+        /* ask <prompt> -> HAL inference stub */
+        let prompt = line[4..].trim();
+        match aios_hal_bare::inference::inference(prompt) {
+            Ok(r) => uart_write(r.as_bytes()),
+            Err(e) => uart_write(e.as_bytes()),
+        }
+    } else if line.len() >= 7 && eq_ignore_ascii_case(&line[..7], "weather") {
+        /* weather [loc] -> skill stub */
+        uart_write(b"Weather: 20C, clear (mock - skill stub)");
+    } else if line.len() > 11 && eq_ignore_ascii_case(&line[..11], "calculator ") {
+        let expr = line[11..].trim();
+        match eval_simple(expr) {
+            Some(r) => {
+                let _ = core::fmt::Write::write_fmt(&mut UartWriter, core::format_args!("{} = {}", expr, r));
+            }
+            None => uart_write(b"calc: use format N op N (e.g. 2+3)"),
+        }
+    } else if line.len() > 5 && eq_ignore_ascii_case(&line[..5], "calc ") {
+        let expr = line[5..].trim();
+        match eval_simple(expr) {
+            Some(r) => {
+                let _ = core::fmt::Write::write_fmt(&mut UartWriter, core::format_args!("{} = {}", expr, r));
+            }
+            None => uart_write(b"calc: use format N op N (e.g. 2+3)"),
+        }
     } else {
         uart_write(line.as_bytes());
     }
+}
+
+/// Minimal calculator: "a+b", "a-b", "a*b", "a/b"
+fn eval_simple(expr: &str) -> Option<i64> {
+    let expr = expr.trim();
+    let op_pos = expr.find(|c| c == '+' || c == '-' || c == '*' || c == '/')?;
+    let left: i64 = expr[..op_pos].trim().parse().ok()?;
+    let right: i64 = expr[op_pos + 1..].trim().parse().ok()?;
+    let op = expr.as_bytes().get(op_pos)?;
+    let r = match *op {
+        b'+' => left.checked_add(right)?,
+        b'-' => left.checked_sub(right)?,
+        b'*' => left.checked_mul(right)?,
+        b'/' => left.checked_div(right)?,
+        _ => return None,
+    };
+    Some(r)
 }
 
 fn eq_ignore_ascii_case(a: &str, b: &str) -> bool {
