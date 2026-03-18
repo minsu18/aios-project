@@ -46,7 +46,8 @@ aios-project/
 ├── kernel/          # x86-64 microkernel (QEMU)
 ├── kernel-rpi/      # Raspberry Pi 3/4 kernel (aarch64)
 ├── hal/             # Hardware Abstraction Layer
-├── hal-bare/        # no_std HAL for bare-metal (kernel-rpi)
+├── hal-bare/        # no_std HAL for bare-metal (kernel-rpi, timer, inference stub)
+├── driver-bridge/   # CLI bridge: camera/audio for prototype (Linux)
 ├── ai-core/         # AI interface core
 ├── skills/          # Skill runtime (App Store items = installable skills)
 ├── drivers/         # Hardware drivers
@@ -95,6 +96,9 @@ cargo run -p aios-boot
 # Raspberry Pi: build kernel8.img for physical SD card boot
 ./tools/build-rpi.sh
 # Copy target/.../kernel8.img to SD card boot partition
+
+# Driver bridge (Linux): voice/image capture from hardware
+cargo build -p aios-driver-bridge --release
 
 # Rust crates (kernel, HAL, ai-core)
 cargo build

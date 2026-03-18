@@ -33,3 +33,10 @@
 - [x] On-device LLM (prototype): Ollama, Transformers.js backends
 - [x] HAL gpu.inference: interface + llama.cpp design (docs/HAL_LLAMA_CPP.md)
 - [x] HAL llama.cpp: llama-cpp-2 crate integration
+
+## Phase 6 (RPi bare-metal)
+- [x] RPi QEMU simulation (raspi4b)
+- [x] HAL-kernel integration (hal-bare: timer, inference stub)
+- [x] Skill runtime on RPi (structured dispatch: help, time, weather, calc, ask)
+- [x] Bump allocator (128KB) for future llama.cpp
+- [x] Driver bridge (camera, audio) for prototype on Linux

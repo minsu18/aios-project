@@ -2,7 +2,7 @@
 
 Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with rule-based conversation loop.
 
-**Commands:** `help`, `time`, `clear`, `version`, `weather [loc]`, `calc <expr>`, `ask <q>`, or type to echo. `ask` calls HAL inference (stub until llama.cpp linked).
+**Commands:** `help`, `time`, `clear`, `version`, `weather [loc]`, `calc <expr>`, `ask <q>`, or type to echo. `ask` calls HAL inference (stub until llama.cpp linked). Skill dispatch in `src/skills.rs`; 128KB bump allocator for future LLM.
 
 ## Requirements
 

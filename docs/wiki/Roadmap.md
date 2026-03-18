@@ -23,9 +23,17 @@
 - App Store: browse, install-from-registry, update
 - Remote registry URL
 
-## Phase 5
+## Phase 5 ✅
 
 - [x] Offline-first (AIOS_OFFLINE=1)
 - [x] On-device LLM: Ollama, Transformers.js
 - [x] HAL gpu.inference interface
-- [ ] HAL llama.cpp FFI (bare-metal)
+- [x] HAL llama.cpp (host)
+
+## Phase 6 (RPi bare-metal)
+
+- [x] RPi QEMU simulation
+- [x] HAL-kernel integration (hal-bare)
+- [x] Skill runtime (structured dispatch)
+- [x] Bump allocator for LLM
+- [x] Driver bridge (camera/audio)
