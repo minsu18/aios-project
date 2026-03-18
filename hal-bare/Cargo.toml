@@ -1,0 +1,5 @@
+[package]
+name = "aios-hal-bare"
+version = "0.1.0"
+edition = "2021"
+description = "AIOS HAL — no_std bare-metal subset for kernel integration"

@@ -35,7 +35,8 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     uart_write(b"/_/  |_/___/\\____//____/  \r\n");
     uart_write(b"\r\n");
     uart_write(b"\r\n[ 0.000] UART init\r\n");
-    uart_write(b"[ 0.001] HAL init (stub)\r\n");
+    aios_hal_bare::init();
+    uart_write(b"[ 0.001] HAL init\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
     uart_write(b"\r\n>> AIOS kernel ready. Commands: help, time, or type to echo\r\n>> ");
 
@@ -109,7 +110,7 @@ fn handle_command(line: &str) {
     if eq_ignore_ascii_case(line, "help") {
         uart_write(b"Commands: help, time. Or type anything to echo. (Ctrl+A X exits QEMU)");
     } else if eq_ignore_ascii_case(line, "time") {
-        let (ticks, freq) = read_arm_timer();
+        let (ticks, freq) = aios_hal_bare::timer::read();
         let secs = if freq > 0 { ticks / freq } else { 0 };
         let _ = core::fmt::Write::write_fmt(
             &mut UartWriter,
@@ -118,17 +119,6 @@ fn handle_command(line: &str) {
     } else {
         uart_write(line.as_bytes());
     }
-}
-
-/// Read ARM Generic Timer: (CNTVCT_EL0, CNTFRQ_EL0)
-fn read_arm_timer() -> (u64, u64) {
-    let ticks: u64;
-    let freq: u64;
-    unsafe {
-        core::arch::asm!("mrs {}, cntvct_el0", out(reg) ticks);
-        core::arch::asm!("mrs {}, cntfrq_el0", out(reg) freq);
-    }
-    (ticks, freq)
 }
 
 fn eq_ignore_ascii_case(a: &str, b: &str) -> bool {

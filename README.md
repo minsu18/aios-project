@@ -46,6 +46,7 @@ aios-project/
 ├── kernel/          # x86-64 microkernel (QEMU)
 ├── kernel-rpi/      # Raspberry Pi 3/4 kernel (aarch64)
 ├── hal/             # Hardware Abstraction Layer
+├── hal-bare/        # no_std HAL for bare-metal (kernel-rpi)
 ├── ai-core/         # AI interface core
 ├── skills/          # Skill runtime (App Store items = installable skills)
 ├── drivers/         # Hardware drivers

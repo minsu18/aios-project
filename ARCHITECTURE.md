@@ -43,6 +43,8 @@
 
 ## 5. HAL (Hardware Abstraction Layer)
 
+**hal-bare** (`aios-hal-bare`): no_std subset for bare-metal kernel (kernel-rpi). Timer, init. Full `aios-hal` links when it supports no_std.
+
 | Resource | Abstraction |
 |----------|-------------|
 | Memory | alloc, free, mmap |
