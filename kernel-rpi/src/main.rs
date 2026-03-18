@@ -38,7 +38,7 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     uart_write(b"\r\n>> AIOS kernel ready.\r\n\r\n");
 
     loop {
-        core::arch::asm!("wfe");
+        unsafe { core::arch::asm!("wfe"); }
     }
 }
 
@@ -52,7 +52,7 @@ unsafe fn uart_init() {
 }
 
 unsafe fn uart_putc(b: u8) {
-    let base = UART_BASE as *const u32;
+    let base = UART_BASE as *mut u32;
     while base.add(UARTFR as usize / 4).read_volatile() & UARTFR_TXFF != 0 {}
     base.add(UARTDR as usize / 4).write_volatile(b as u32);
 }
@@ -63,14 +63,22 @@ fn uart_write(s: &[u8]) {
     }
 }
 
+struct UartWriter;
+
+impl core::fmt::Write for UartWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        uart_write(s.as_bytes());
+        Ok(())
+    }
+}
+
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     uart_write(b"PANIC: ");
-    if let Some(s) = info.message().and_then(|m| m.as_str()) {
-        uart_write(s.as_bytes());
-    }
+    let payload = info.message();
+    let _ = core::fmt::Write::write_fmt(&mut UartWriter, core::format_args!("{payload}"));
     uart_write(b"\r\n");
     loop {
-        core::arch::asm!("wfe");
+        unsafe { core::arch::asm!("wfe"); }
     }
 }

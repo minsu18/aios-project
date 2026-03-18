@@ -19,6 +19,18 @@ Minimal aarch64 kernel for Raspberry Pi. Serial output via PL011 UART.
 
 Output: `target/aarch64-unknown-none/release/kernel8.img`
 
+## Simulate with QEMU (no hardware needed)
+
+Run the kernel in QEMU using the `raspi4b` machine (QEMU 9.0+):
+
+```bash
+./tools/simulate-rpi.sh
+```
+
+Serial output appears in the terminal. Exit with **Ctrl+A** then **X**.
+
+**Requirements:** `qemu-system-aarch64` (macOS: `brew install qemu`, Ubuntu: `apt install qemu-system-aarch64`)
+
 ## Boot on Raspberry Pi
 
 1. **SD card**: Use a Raspberry Pi OS SD card (or any with boot partition containing `start*.elf`, `fixup*.dat`, `config.txt`).

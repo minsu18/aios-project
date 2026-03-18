@@ -5,16 +5,8 @@ edition = "2021"
 authors = ["AIOS Project"]
 description = "AIOS kernel for Raspberry Pi 3/4 (aarch64)"
 
-[lib]
-crate-type = ["lib"]
-
 [[bin]]
 name = "kernel"
 path = "src/main.rs"
 
 [dependencies]
-
-[profile.release]
-panic = "abort"
-lto = true
-opt-level = 3

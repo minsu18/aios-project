@@ -8,3 +8,10 @@ members = [
     "boot",
     "drivers",
 ]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true

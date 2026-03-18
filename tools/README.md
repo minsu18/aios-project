@@ -10,6 +10,18 @@ Build `kernel8.img` for Raspberry Pi 3/4:
 
 Requires: `aarch64-none-elf` toolchain, `rustup target add aarch64-unknown-none`. See [kernel-rpi/README.md](../kernel-rpi/README.md).
 
+## Raspberry Pi Simulation (QEMU)
+
+Run the RPi kernel in QEMU without physical hardware:
+
+```bash
+./tools/simulate-rpi.sh
+```
+
+Uses `qemu-system-aarch64` with raspi4b machine. Serial output in terminal. Exit: **Ctrl+A** then **X**.
+
+**Requirements:** QEMU 9.0+ with `qemu-system-aarch64` (macOS: `brew install qemu`)
+
 ## VM Simulation
 
 Boot AIOS kernel in QEMU with configurable specs, then run the AI prototype:

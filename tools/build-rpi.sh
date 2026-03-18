@@ -11,6 +11,9 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Ensure cargo is in PATH (e.g. when run from Cursor/IDE)
+[[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+
 echo "Building AIOS kernel for Raspberry Pi..."
 
 cargo build -p aios-kernel-rpi --target aarch64-unknown-none --release
@@ -20,14 +23,14 @@ IMG="${ELF}8.img"
 
 if command -v aarch64-none-elf-objcopy &>/dev/null; then
     aarch64-none-elf-objcopy -O binary "$ELF" "$IMG"
+    echo "Built: $IMG"
 elif command -v llvm-objcopy &>/dev/null; then
     llvm-objcopy -O binary "$ELF" "$IMG"
+    echo "Built: $IMG"
 else
-    echo "Error: aarch64-none-elf-objcopy or llvm-objcopy required"
-    exit 1
+    echo "Built: $ELF (raw binary not created — install aarch64-none-elf or llvm for SD card)"
+    echo "  QEMU simulation can use the ELF directly."
 fi
-
-echo "Built: $IMG"
 echo ""
 echo "To boot on Raspberry Pi:"
 echo "  1. Use an SD card with Raspberry Pi OS boot files (start*.elf, fixup*.dat, config.txt)"
