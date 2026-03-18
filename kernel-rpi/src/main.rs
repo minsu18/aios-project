@@ -109,10 +109,26 @@ fn handle_command(line: &str) {
     if eq_ignore_ascii_case(line, "help") {
         uart_write(b"Commands: help, time. Or type anything to echo. (Ctrl+A X exits QEMU)");
     } else if eq_ignore_ascii_case(line, "time") {
-        uart_write(b"Time: not available (no RTC in bare-metal)");
+        let (ticks, freq) = read_arm_timer();
+        let secs = if freq > 0 { ticks / freq } else { 0 };
+        let _ = core::fmt::Write::write_fmt(
+            &mut UartWriter,
+            core::format_args!("Time: {} s since boot (ticks={}, freq={} Hz)", secs, ticks, freq),
+        );
     } else {
         uart_write(line.as_bytes());
     }
+}
+
+/// Read ARM Generic Timer: (CNTVCT_EL0, CNTFRQ_EL0)
+fn read_arm_timer() -> (u64, u64) {
+    let ticks: u64;
+    let freq: u64;
+    unsafe {
+        core::arch::asm!("mrs {}, cntvct_el0", out(reg) ticks);
+        core::arch::asm!("mrs {}, cntfrq_el0", out(reg) freq);
+    }
+    (ticks, freq)
 }
 
 fn eq_ignore_ascii_case(a: &str, b: &str) -> bool {

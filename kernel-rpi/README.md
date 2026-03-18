@@ -2,7 +2,7 @@
 
 Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with rule-based conversation loop.
 
-**Commands:** `help`, `time`, or type anything to echo.
+**Commands:** `help`, `time` (ARM Generic Timer: seconds since boot), or type anything to echo.
 
 ## Requirements
 
