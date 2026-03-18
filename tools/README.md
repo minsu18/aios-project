@@ -22,6 +22,20 @@ Uses `qemu-system-aarch64` with raspi4b machine. Serial output in terminal. Exit
 
 **Requirements:** QEMU 9.0+ with `qemu-system-aarch64` (macOS: `brew install qemu`)
 
+**Note:** The `ask` command requires the Serial Bridge (no host LLM in standalone mode). Use `./tools/simulate-rpi-bridge.sh` for `ask` with Ollama.
+
+### Serial Bridge (host inference)
+
+Run with host Ollama for real LLM responses on `ask`:
+
+```bash
+./tools/simulate-rpi-bridge.sh
+```
+
+Requires: Node 18+, `ollama serve`, `ollama pull llama3.2`. Env: `AIOS_OLLAMA_HOST`, `AIOS_OLLAMA_MODEL`
+
+**SD card (real RPi only):** Put `SKILL.md` in the SD root (first FAT32 partition). The `sd` command reports capacity and SKILL.md presence.
+
 ## Driver Bridge (Linux)
 
 Build the driver bridge for hardware capture (camera, mic) from the prototype:

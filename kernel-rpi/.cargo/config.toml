@@ -1,2 +1,3 @@
 [target.aarch64-unknown-none]
-linker = "aarch64-none-elf-ld"
+# Prefer aarch64-elf (Homebrew); aarch64-none-elf (ARM) also works
+linker = "aarch64-elf-ld"

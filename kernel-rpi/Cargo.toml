@@ -5,6 +5,10 @@ edition = "2021"
 authors = ["AIOS Project"]
 description = "AIOS kernel for Raspberry Pi 3/4 (aarch64)"
 
+[features]
+default = []
+llama = []  # 64MB heap for on-device llama.cpp
+
 [[bin]]
 name = "kernel"
 path = "src/main.rs"

@@ -10,6 +10,7 @@ TypeScript prototype for AI core and skill runtime. Runs on host for validation 
   - `ollama`: Local LLM via Ollama (run `ollama serve`, `ollama pull llama3.2`). Optional: `AIOS_OLLAMA_MODEL`, `AIOS_OLLAMA_HOST`
   - `transformers`: Local LLM via @huggingface/transformers (first run downloads model). Optional: `AIOS_TRANSFORMERS_MODEL`
 - **Offline-first**: `AIOS_OFFLINE=1` forces all inference on-device (no cloud calls). Built-in skills (time, weather, calculator, echo) always work without network.
+- **RPi kernel bridge**: `npm run simulate:rpi` — boots RPi kernel in QEMU with serial bridge; `ask` uses host Ollama.
 - **Multimodal I/O**: Voice (Whisper STT), image (Vision API) — `voice <file>`, `voice capture` (Linux/mic), `image <file> [prompt]`, `image capture [prompt]` (Linux/camera)
 - **Skill Runtime**: Load SKILL.md from `~/.aios/skills/` or `.aios/skills/`
 - **App Store CLI**: Install, remove, browse registry, install-from-registry

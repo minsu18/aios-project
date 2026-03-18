@@ -13,10 +13,14 @@ fn main() {
 
     let target = env::var("TARGET").unwrap_or_default();
     if target.contains("aarch64") {
-        let status = Command::new("aarch64-none-elf-as")
+        let mut status = Command::new("aarch64-elf-as")
             .args(["-c", boot_s.to_str().unwrap(), "-o", boot_o.to_str().unwrap()])
             .status();
-
+        if status.as_ref().map(|s| !s.success()).unwrap_or(true) {
+            status = Command::new("aarch64-none-elf-as")
+                .args(["-c", boot_s.to_str().unwrap(), "-o", boot_o.to_str().unwrap()])
+                .status();
+        }
         if status.is_err() || !status.as_ref().unwrap().success() {
             // Fallback: try clang
             let status = Command::new("clang")

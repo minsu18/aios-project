@@ -12,6 +12,11 @@ use core::alloc::Layout;
 use core::panic::PanicInfo;
 
 mod allocator;
+mod block;
+mod bridge;
+mod fat32;
+mod pm;
+mod skill_registry;
 mod skills;
 
 #[global_allocator]
@@ -56,7 +61,7 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     aios_hal_bare::init();
     uart_write(b"[ 0.001] HAL init\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
-    uart_write(b"\r\n>> AIOS kernel ready. help, time, clear, version, weather, calc, ask\r\n>> ");
+    uart_write(b"\r\n>> AIOS kernel ready. help, time, load, skills, mem, sd, uptime, cpuinfo, reboot, weather, calc, ask\r\n>> ");
 
     conversation_loop();
 }
@@ -82,10 +87,19 @@ pub fn uart_write(s: &[u8]) {
     }
 }
 
-unsafe fn uart_read_byte() -> u8 {
+pub(crate) unsafe fn uart_read_byte() -> u8 {
     let base = UART_BASE as *const u32;
     while base.add(UARTFR as usize / 4).read_volatile() & UARTFR_RXFE != 0 {}
     base.add(UARTDR as usize / 4).read_volatile() as u8
+}
+
+/// Non-blocking read. Returns None if RX FIFO is empty.
+pub(crate) unsafe fn uart_try_read_byte() -> Option<u8> {
+    let base = UART_BASE as *const u32;
+    if base.add(UARTFR as usize / 4).read_volatile() & UARTFR_RXFE != 0 {
+        return None;
+    }
+    Some(base.add(UARTDR as usize / 4).read_volatile() as u8)
 }
 
 const LINE_BUF: usize = 128;
@@ -122,6 +136,10 @@ fn conversation_loop() -> ! {
 }
 
 fn handle_command(line: &str) {
+    // Discard stray bridge protocol lines (late reply after timeout)
+    if line.starts_with("AIOS_BRIDGE_REPLY:") || line.starts_with("AIOS_BRIDGE_ASK:") {
+        return;
+    }
     if !skills::dispatch(line) {
         uart_write(line.as_bytes());
     }

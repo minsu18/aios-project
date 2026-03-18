@@ -93,6 +93,11 @@ cargo run -p aios-boot
 ./tools/simulate-rpi.sh
 # Exit: Ctrl+A then X
 
+# Raspberry Pi: run with host Ollama for 'ask' (LLM via serial bridge)
+./tools/simulate-rpi-bridge.sh
+# Or: cd prototype && npm run simulate:rpi
+# Requires: ollama serve, ollama pull llama3.2
+
 # Raspberry Pi: build kernel8.img for physical SD card boot
 ./tools/build-rpi.sh
 # Copy target/.../kernel8.img to SD card boot partition

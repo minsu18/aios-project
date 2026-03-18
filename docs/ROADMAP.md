@@ -37,6 +37,11 @@
 ## Phase 6 (RPi bare-metal)
 - [x] RPi QEMU simulation (raspi4b)
 - [x] HAL-kernel integration (hal-bare: timer, inference stub)
-- [x] Skill runtime on RPi (structured dispatch: help, time, weather, calc, ask)
-- [x] Bump allocator (128KB) for future llama.cpp
+- [x] Skill runtime on RPi (help, time, weather, calc, ask, mem, sd, uptime, cpuinfo, reboot)
+- [x] Bump allocator (128KB default; 64MB with `--features llama`)
 - [x] Driver bridge (camera, audio) for prototype on Linux
+- [x] Serial bridge (host Ollama for `ask` via UART protocol)
+- [x] Block device (SD/EMMC2 init, read, CSD capacity)
+- [x] FAT32 parser (MBR, root dir, read SKILL.md)
+- [x] SKILL.md frontmatter parsing and tool registration (`load`, `skills`, `skill.tool`)
+- [x] Prototype ↔ kernel bridge (`npm run simulate:rpi`)

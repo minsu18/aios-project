@@ -2,15 +2,16 @@
 
 Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with rule-based conversation loop.
 
-**Commands:** `help`, `time`, `clear`, `version`, `weather [loc]`, `calc <expr>`, `ask <q>`, or type to echo. `ask` calls HAL inference (stub until llama.cpp linked). Skill dispatch in `src/skills.rs`; 128KB bump allocator for future LLM.
+**Commands:** `help`, `time`, `load`, `skills`, `mem`, `sd`, `uptime`, `cpuinfo`, `reboot`, `weather`, `calc`, `ask`. `load` loads SKILL.md from SD (or built-in if SD unavailable). `skills` lists loaded tools. Invoke via `skill.tool` (e.g. `example.get_time`, `example echo hi`). SD: EMMC2 + FAT32; `ask` via host bridge.
 
 ## Requirements
 
 1. **Rust** (nightly): `rustup target add aarch64-unknown-none`
 2. **ARM toolchain** (one of):
+   - `aarch64-elf-gcc` (Homebrew: `brew install aarch64-elf-gcc`)
    - `aarch64-none-elf-gcc` (ARM GNU Toolchain)
    - `clang` with aarch64 target
-   - `llvm-objcopy` or `aarch64-none-elf-objcopy` for kernel8.img
+   - `llvm-objcopy` or `aarch64-elf-objcopy` for kernel8.img
 
 ## Build
 

@@ -21,7 +21,10 @@ cargo build -p aios-kernel-rpi --target aarch64-unknown-none --release
 ELF="$ROOT/target/aarch64-unknown-none/release/kernel"
 IMG="${ELF}8.img"
 
-if command -v aarch64-none-elf-objcopy &>/dev/null; then
+if command -v aarch64-elf-objcopy &>/dev/null; then
+    aarch64-elf-objcopy -O binary "$ELF" "$IMG"
+    echo "Built: $IMG"
+elif command -v aarch64-none-elf-objcopy &>/dev/null; then
     aarch64-none-elf-objcopy -O binary "$ELF" "$IMG"
     echo "Built: $IMG"
 elif command -v llvm-objcopy &>/dev/null; then

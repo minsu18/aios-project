@@ -1,11 +1,192 @@
 //! Skill runtime — structured dispatch for built-in commands.
-//! Future: load from SD card SKILL.md when block driver exists.
+//! Block driver (block.rs) scaffold exists; load from SD SKILL.md when implemented.
 
+use crate::allocator;
 use crate::{eval_simple, eq_ignore_ascii_case, uart_write, UartWriter};
 use core::fmt::Write;
 
+const SKILL_BUF_SIZE: usize = 2048;
+
 fn skill_help() {
-    uart_write(b"Commands: help, time, clear, version, weather [loc], calc <expr>, ask <q>. (Ctrl+A X exits)");
+    uart_write(b"Commands: help, time, load, skills, mem, sd, uptime, cpuinfo, reboot, weather, calc, ask. (Ctrl+A X exits)");
+}
+
+/// Built-in SKILL.md for QEMU/testing when SD is unavailable.
+const BUILTIN_SKILL: &[u8] = b"---
+name: example
+description: Example skill
+version: 0.1.0
+tools: [
+  {\"name\":\"get_time\",\"description\":\"Get current time\"},
+  {\"name\":\"echo\",\"description\":\"Echo back input\"}
+]
+---";
+
+fn skill_load() {
+    use crate::block::{BlockError, SdCard};
+    use crate::fat32::{find_root_file, read_file_content, SKILL_MD_83};
+    use crate::skill_registry;
+    let mut sd = SdCard::new();
+    match sd.init() {
+        Ok(()) => {}
+        Err(BlockError::Timeout) => {
+            uart_write(b"load: SD unavailable, using built-in SKILL.md\r\n");
+            if skill_registry::parse_and_register(BUILTIN_SKILL) {
+                uart_write(b"load: example skill loaded (built-in)");
+            }
+            return;
+        }
+        Err(BlockError::NotReady) => {
+            uart_write(b"load: SD not ready");
+            return;
+        }
+        Err(BlockError::Fault(e)) => {
+            let _ = core::fmt::Write::write_fmt(
+                &mut UartWriter,
+                core::format_args!("load: SD fault: {}", e),
+            );
+            return;
+        }
+    }
+    let mut buf = [0u8; SKILL_BUF_SIZE];
+    let (cluster, size) = match find_root_file(&sd, &SKILL_MD_83) {
+        Ok(Some(x)) => x,
+        Ok(None) => {
+            uart_write(b"load: No SKILL.md in SD root");
+            return;
+        }
+        Err(_) => {
+            uart_write(b"load: FAT32 read error");
+            return;
+        }
+    };
+    let n = match read_file_content(&sd, cluster, size, &mut buf) {
+        Ok(n) => n,
+        Err(_) => {
+            uart_write(b"load: File read error");
+            return;
+        }
+    };
+    if skill_registry::parse_and_register(&buf[..n]) {
+        let _ = core::fmt::Write::write_fmt(
+            &mut UartWriter,
+            core::format_args!("load: SKILL.md loaded ({} B)", n),
+        );
+    } else {
+        uart_write(b"load: Parse error in SKILL.md frontmatter");
+    }
+}
+
+fn skill_skills() {
+    crate::skill_registry::format_list(&mut |b: &[u8]| uart_write(b));
+}
+
+fn skill_uptime() {
+    let (ticks, freq) = aios_hal_bare::timer::read();
+    let secs = if freq > 0 { ticks / freq } else { 0 };
+    let _ = Write::write_fmt(
+        &mut UartWriter,
+        core::format_args!("Uptime: {} s", secs),
+    );
+}
+
+fn skill_cpuinfo() {
+    #[cfg(target_arch = "aarch64")]
+    {
+        let midr: u64;
+        unsafe { core::arch::asm!("mrs {}, midr_el1", out(reg) midr); }
+        let implementer = ((midr >> 24) & 0xFF) as u8;
+        let partno = ((midr >> 4) & 0xFFF) as u16;
+        let _ = Write::write_fmt(
+            &mut UartWriter,
+            core::format_args!("CPU: ARM MIDR 0x{:08X} (impl 0x{:02X} part 0x{:03X})", midr, implementer, partno),
+        );
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    uart_write(b"CPU: N/A (not aarch64)");
+}
+
+fn skill_reboot() {
+    uart_write(b"Rebooting...\r\n");
+    crate::pm::reboot();
+}
+
+fn skill_sd() {
+    use crate::block::{BlockError, BlockDevice, BLOCK_SIZE, SdCard};
+    use crate::fat32::{read_file_first_block, find_root_file, SKILL_MD_83};
+    let mut sd = SdCard::new();
+    match sd.init() {
+        Ok(()) => {
+            let blks = sd.block_count();
+            let mut buf = [0u8; BLOCK_SIZE];
+            match sd.read_block(0, &mut buf) {
+                Ok(()) => {
+                    let _ = Write::write_fmt(
+                        &mut UartWriter,
+                        core::format_args!(
+                            "SD: OK, block 0 read",
+                        ),
+                    );
+                    if let Some(n) = blks {
+                        let _ = Write::write_fmt(
+                            &mut UartWriter,
+                            core::format_args!(", {} blocks", n),
+                        );
+                    }
+                    uart_write(b". ");
+                    match find_root_file(&sd, &SKILL_MD_83) {
+                        Ok(Some((cluster, size))) => {
+                            let _ = Write::write_fmt(
+                                &mut UartWriter,
+                                core::format_args!("SKILL.md found ({} B)", size),
+                            );
+                            if let Ok(()) = read_file_first_block(&sd, cluster, &mut buf) {
+                                let end = buf.iter().position(|&b| b == 0 || b == b'\n').unwrap_or(80);
+                                let end = end.min(80);
+                                let pre = core::str::from_utf8(&buf[..end]).unwrap_or("?");
+                                let _ = Write::write_fmt(
+                                    &mut UartWriter,
+                                    core::format_args!(", first: \"{}\"", pre),
+                                );
+                            }
+                        }
+                        Ok(None) => uart_write(b"No SKILL.md in root"),
+                        Err(_) => uart_write(b"FAT32 read err"),
+                    }
+                }
+                Err(BlockError::NotReady) => uart_write(b"SD: init OK, read not ready"),
+                Err(BlockError::Timeout) => uart_write(b"SD: init OK, read timeout"),
+                Err(BlockError::Fault(e)) => {
+                    let _ = Write::write_fmt(
+                        &mut UartWriter,
+                        core::format_args!("SD: init OK, read fault: {}", e),
+                    );
+                }
+            }
+        }
+        Err(BlockError::NotReady) => uart_write(b"SD: not ready"),
+        Err(BlockError::Timeout) => uart_write(b"SD: init timeout (no card? QEMU?)"),
+        Err(BlockError::Fault(e)) => {
+            let _ = Write::write_fmt(
+                &mut UartWriter,
+                core::format_args!("SD: init fault: {}", e),
+            );
+        }
+    }
+}
+
+fn skill_mem() {
+    let (used, total) = allocator::heap_stats();
+    let free = total.saturating_sub(used);
+    let _ = Write::write_fmt(
+        &mut UartWriter,
+        core::format_args!(
+            "Heap: {} KB used / {} KB total ({} KB free)",
+            used / 1024,
+            total / 1024,
+            free / 1024
+        ),
+    );
 }
 
 fn skill_time() {
@@ -39,8 +220,10 @@ fn skill_calc(rest: &str) {
 }
 
 fn skill_ask(rest: &str) {
-    match aios_hal_bare::inference::inference(rest) {
-        Ok(r) => uart_write(r.as_bytes()),
+    let r = aios_hal_bare::inference::inference(rest)
+        .or_else(|_| crate::bridge::ask_host(rest));
+    match r {
+        Ok(s) => uart_write(s.as_bytes()),
         Err(e) => uart_write(e.as_bytes()),
     }
 }
@@ -66,6 +249,34 @@ pub fn dispatch(line: &str) -> bool {
         skill_version();
         return true;
     }
+    if eq_ignore_ascii_case(line, "mem") || eq_ignore_ascii_case(line, "memory") {
+        skill_mem();
+        return true;
+    }
+    if eq_ignore_ascii_case(line, "load") {
+        skill_load();
+        return true;
+    }
+    if eq_ignore_ascii_case(line, "skills") {
+        skill_skills();
+        return true;
+    }
+    if eq_ignore_ascii_case(line, "sd") {
+        skill_sd();
+        return true;
+    }
+    if eq_ignore_ascii_case(line, "uptime") {
+        skill_uptime();
+        return true;
+    }
+    if eq_ignore_ascii_case(line, "cpuinfo") || eq_ignore_ascii_case(line, "cpu") {
+        skill_cpuinfo();
+        return true;
+    }
+    if eq_ignore_ascii_case(line, "reboot") {
+        skill_reboot();
+        return true;
+    }
     if line.len() >= 7 && eq_ignore_ascii_case(&line[..7], "weather") {
         skill_weather(line[7..].trim());
         return true;
@@ -82,5 +293,54 @@ pub fn dispatch(line: &str) -> bool {
         skill_ask(line[4..].trim());
         return true;
     }
+
+    // skill.tool or skill tool args (from loaded SKILL.md)
+    if let Some(dot) = line.find('.') {
+        let (skill, rest) = line.split_at(dot);
+        let tool_rest = rest[1..].trim();
+        let (tool, args) = if let Some(sp) = tool_rest.find(|c: char| c.is_ascii_whitespace()) {
+            (tool_rest[..sp].trim(), tool_rest[sp..].trim())
+        } else {
+            (tool_rest, "")
+        };
+        if crate::skill_registry::find_tool(skill.trim(), tool).is_some() {
+            dispatch_tool(skill.trim(), tool, args);
+            return true;
+        }
+    }
+    let mut it = line.split_whitespace();
+    let skill = match it.next() {
+        Some(s) => s,
+        None => return false,
+    };
+    let tool = match it.next() {
+        Some(t) => t,
+        None => return false,
+    };
+    let args = {
+        let idx = line.find(tool).unwrap_or(0) + tool.len();
+        line[idx..].trim()
+    };
+    if crate::skill_registry::find_tool(skill, tool).is_some() {
+        dispatch_tool(skill, tool, args);
+        return true;
+    }
     false
+}
+
+fn dispatch_tool(skill: &str, tool: &str, args: &str) {
+    if eq_ignore_ascii_case(tool, "get_time") {
+        skill_time();
+    } else if eq_ignore_ascii_case(tool, "echo") {
+        if args.is_empty() {
+            uart_write(b"echo: needs text");
+        } else {
+            uart_write(args.as_bytes());
+        }
+    } else {
+        let _ = Write::write_fmt(
+            &mut UartWriter,
+            core::format_args!("Tool {}.{} not implemented on device", skill, tool),
+        );
+    }
 }

@@ -11,7 +11,8 @@
     "demo": "tsc && node --no-deprecation dist/index.js demo",
     "skills": "tsc && node --no-deprecation dist/index.js skills",
     "simulate": "tsc && node --no-deprecation dist/index.js simulate",
-    "simulate:no-vm": "tsc && node --no-deprecation dist/index.js simulate --no-vm"
+    "simulate:no-vm": "tsc && node --no-deprecation dist/index.js simulate --no-vm",
+    "simulate:rpi": "cd .. && ./tools/simulate-rpi-bridge.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",

@@ -5,7 +5,10 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-const HEAP_SIZE: usize = 128 * 1024; // 128KB
+#[cfg(not(feature = "llama"))]
+pub const HEAP_SIZE: usize = 128 * 1024; // 128KB default
+#[cfg(feature = "llama")]
+pub const HEAP_SIZE: usize = 64 * 1024 * 1024; // 64MB for llama.cpp
 
 #[repr(align(4096))]
 struct Heap([u8; HEAP_SIZE]);
@@ -32,4 +35,9 @@ unsafe impl GlobalAlloc for BumpAllocator {
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
         /* Bump allocator: no-op */
     }
+}
+
+/// Returns (used_bytes, total_bytes).
+pub fn heap_stats() -> (usize, usize) {
+    (BUMP.load(Ordering::Relaxed), HEAP_SIZE)
 }
