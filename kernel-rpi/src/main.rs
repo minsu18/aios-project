@@ -25,12 +25,13 @@ const UARTCR_TXE: u32 = 1 << 8;
 #[no_mangle]
 pub unsafe extern "C" fn kernel_main() -> ! {
     uart_init();
-    uart_write(b"\r\n  ___    ___   ___  \r\n");
-    uart_write(b" |_ _|  / _ \\ / ___|\r\n");
-    uart_write(b"  | |  | | | |\\___ \\\r\n");
-    uart_write(b"  | |  | |_| | ___) |\r\n");
-    uart_write(b" |___|  \\___/ |____/ \r\n");
-    uart_write(b" AIOS — Raspberry Pi\r\n");
+    uart_write(b"\r\n");
+    uart_write(b"    ___    ________  _____\r\n");
+    uart_write(b"   /   |  /  _/ __ \\/ ___/\r\n");
+    uart_write(b"  / /| |  / // / / /\\__ \\ \r\n");
+    uart_write(b" / ___ |_/ // /_/ /___/ / \r\n");
+    uart_write(b"/_/  |_/___/\\____//____/  \r\n");
+    uart_write(b"\r\n");
     uart_write(b"\r\n[ 0.000] UART init\r\n");
     uart_write(b"[ 0.001] HAL init (stub)\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
