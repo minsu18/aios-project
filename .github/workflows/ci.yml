@@ -28,8 +28,8 @@ jobs:
         with:
           shared-key: aios-rust
 
-      - name: Build workspace (excl. kernel-rpi)
-        run: cargo build --workspace --exclude aios-kernel-rpi --all-targets
+      - name: Build workspace (excl. bare-metal kernels)
+        run: cargo build --workspace --exclude aios-kernel --exclude aios-kernel-rpi --all-targets
 
       - name: Build kernel-rpi (release)
         run: cargo build -p aios-kernel-rpi --target aarch64-unknown-none --release
