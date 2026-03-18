@@ -11,7 +11,7 @@ raspi3 = []  # raspi3b: UART 0x3F201000, peri 0x3F000000
 llama = ["aios-hal-bare/llama"]  # 64MB heap + libllama for on-device inference
 
 [[bin]]
-name = "kernel"
+name = "kernel-rpi"
 path = "src/main.rs"
 
 [dependencies]

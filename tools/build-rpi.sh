@@ -24,8 +24,8 @@ echo "Building AIOS kernel for Raspberry Pi..."
 
 cargo build -p aios-kernel-rpi --target aarch64-unknown-none --release $RASPI3
 
-ELF="$ROOT/target/aarch64-unknown-none/release/kernel"
-IMG="${ELF}8.img"
+ELF="$ROOT/target/aarch64-unknown-none/release/kernel-rpi"
+IMG="$ROOT/target/aarch64-unknown-none/release/kernel8.img"
 
 if command -v aarch64-elf-objcopy &>/dev/null; then
     aarch64-elf-objcopy -O binary "$ELF" "$IMG"

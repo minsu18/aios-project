@@ -48,16 +48,16 @@ BUILD_ARGS=()
 [[ "$MACHINE" == raspi3b ]] && BUILD_ARGS=(--raspi3)
 ./tools/build-rpi.sh "${BUILD_ARGS[@]}"
 
-ELF="$ROOT/target/aarch64-unknown-none/release/kernel"
-KERNEL="${ELF}8.img"
+ELF="$ROOT/target/aarch64-unknown-none/release/kernel-rpi"
+IMG="$ROOT/target/aarch64-unknown-none/release/kernel8.img"
 
 # QEMU accepts both ELF and raw binary; prefer kernel8.img for real SD card parity
-if [[ -f "$KERNEL" ]]; then
-  :
+if [[ -f "$IMG" ]]; then
+  KERNEL="$IMG"
 elif [[ -f "$ELF" ]]; then
   KERNEL="$ELF"
 else
-  echo "Error: kernel build failed (no $KERNEL or $ELF)"
+  echo "Error: kernel build failed (no $IMG or $ELF)"
   exit 1
 fi
 

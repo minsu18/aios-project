@@ -72,9 +72,9 @@ async function main() {
   if (existsSync(pipeOut)) execSync(`rm -f "${pipeOut}"`);
   execSync(`mkfifo "${pipeIn}" "${pipeOut}"`);
 
-  const elf = join(ROOT, "target/aarch64-unknown-none/release/kernel");
-  const kernel = `${elf}8.img`;
-  const kernelPath = existsSync(kernel) ? kernel : elf;
+  const img = join(ROOT, "target/aarch64-unknown-none/release/kernel8.img");
+  const elf = join(ROOT, "target/aarch64-unknown-none/release/kernel-rpi");
+  const kernelPath = existsSync(img) ? img : elf;
 
   const qemu = spawn("qemu-system-aarch64", [
     "-M", "raspi4b", "-m", "2G", "-cpu", "cortex-a72", "-smp", "4",

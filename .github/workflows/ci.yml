@@ -20,8 +20,8 @@ jobs:
           components: rustfmt, llvm-tools, rust-src
           targets: aarch64-unknown-none
 
-      - name: Install ARM toolchain / llvm-objcopy
-        run: sudo apt-get update && sudo apt-get install -y llvm
+      - name: Install system deps (llvm, ALSA, V4L2)
+        run: sudo apt-get update && sudo apt-get install -y llvm libasound2-dev libv4l-dev
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
