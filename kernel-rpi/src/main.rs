@@ -4,8 +4,25 @@
 
 #![no_std]
 #![no_main]
+#![feature(alloc_error_handler)]
 
+extern crate alloc;
+
+use core::alloc::Layout;
 use core::panic::PanicInfo;
+
+mod allocator;
+
+#[global_allocator]
+static ALLOC: allocator::BumpAllocator = allocator::BumpAllocator;
+
+#[alloc_error_handler]
+fn alloc_error(_layout: Layout) -> ! {
+    uart_write(b"alloc error: layout too large\r\n");
+    loop {
+        unsafe { core::arch::asm!("wfe"); }
+    }
+}
 
 // boot.S is compiled by build.rs and linked separately
 

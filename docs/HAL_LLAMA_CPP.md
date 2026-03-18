@@ -40,7 +40,7 @@ cargo run -p aios-hal --features llama --example llama_inference -- ./tinyllama.
 | aarch64  | RPi 4: use quantized Q4_K_M; ~2GB RAM for 1B model   |
 | Bare-metal | No OS; needs custom allocator, no pthread. hal-bare::inference is stub until linked |
 
-**kernel-rpi** calls `hal_bare::inference::inference(prompt)` via the `ask <q>` command. Currently returns "LLM not available" until llama.cpp is integrated.
+**kernel-rpi** calls `hal_bare::inference::inference(prompt)` via the `ask <q>` command. Currently returns "LLM not available" until llama.cpp is integrated. See [HAL_LLAMA_CPP_BAREMETAL.md](HAL_LLAMA_CPP_BAREMETAL.md) for bare-metal integration design.
 
 ## References
 
