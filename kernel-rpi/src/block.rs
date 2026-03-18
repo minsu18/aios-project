@@ -1,7 +1,8 @@
 //! Block device abstraction for SD/MMC.
 //!
-//! BCM2711 EMMC2 at 0xFE34_0000. Implements SD Physical Layer spec for init and
-//! single-block read. Test on real RPi 4; QEMU raspi4b does not emulate SD.
+//! Two controllers supported:
+//! - BCM2711 EMMC2 at 0xFE34_0000 — real RPi 4
+//! - BCM2835 SDHOST at 0xFE20_2000 — QEMU raspi4b (-drive if=sd)
 
 #![allow(dead_code)]
 
@@ -13,6 +14,70 @@ pub const BLOCK_SIZE: usize = 512;
 pub trait BlockDevice {
     fn read_block(&self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError>;
     fn block_count(&self) -> Option<u64>;
+}
+
+/// Unified SD device: tries EMMC2 first (real RPi 4), then bcm2835-sdhost (QEMU).
+pub enum SdDevice {
+    Emmc2(SdCard),
+    SdHost(SdHost),
+}
+
+impl SdDevice {
+    /// Create and init best available SD.
+    /// raspi3: only 0x3F* (avoid 0xFE* — can hang on QEMU raspi3b).
+    /// raspi4: EMMC2, EMMC1, sdhost.
+    pub fn new() -> Self {
+        let emmc_bases: &[u64] = if cfg!(feature = "raspi3") {
+            &[SdCard::EMMC1_BASE_RASPI3] // 0x3F300000 only
+        } else {
+            &[
+                SdCard::EMMC_BASE,       // 0xFE340000 real RPi 4
+                SdCard::EMMC1_BASE,       // 0xFE300000 QEMU raspi4b
+            ]
+        };
+        for &base in emmc_bases {
+            let mut emmc = SdCard::new_at(base);
+            if emmc.init().is_ok() {
+                return Self::Emmc2(emmc);
+            }
+        }
+        let sdhost_bases: &[u64] = if cfg!(feature = "raspi3") {
+            &[SdHost::SDHOST_BASE_RASPI3] // 0x3F202000 only
+        } else {
+            &[SdHost::SDHOST_BASE]
+        };
+        for &base in sdhost_bases {
+            let mut sdhost = SdHost::new_at(base);
+            if sdhost.init().is_ok() {
+                return Self::SdHost(sdhost);
+            }
+        }
+        Self::Emmc2(SdCard::new()) // all failed; caller checks is_ready()
+    }
+
+    /// True if init succeeded.
+    pub fn is_ready(&self) -> bool {
+        match self {
+            Self::Emmc2(s) => s.is_initialized(),
+            Self::SdHost(s) => s.is_initialized(),
+        }
+    }
+}
+
+impl BlockDevice for SdDevice {
+    fn read_block(&self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
+        match self {
+            Self::Emmc2(s) => s.read_block(offset, buf),
+            Self::SdHost(s) => s.read_block(offset, buf),
+        }
+    }
+
+    fn block_count(&self) -> Option<u64> {
+        match self {
+            Self::Emmc2(s) => s.block_count(),
+            Self::SdHost(s) => s.block_count(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -89,9 +154,10 @@ const CMD_READ_BLOCK: u32 = 17;
 const CMD_APP_CMD: u32 = 55;
 const CMD_SD_SEND_OP_COND: u32 = 41;
 
-const TIMEOUT_LOOP: usize = 1_000_000;
+/// 10k: fail fast on wrong bases; real RPi responds in ~us.
+const TIMEOUT_LOOP: usize = 10_000;
 
-/// BCM2711 EMMC2 SD host controller.
+/// BCM2711 EMMC2 / Arasan SDHCI controller.
 pub struct SdCard {
     base: *mut u32,
     rca: u16,           // relative card address
@@ -101,11 +167,19 @@ pub struct SdCard {
 }
 
 impl SdCard {
+    /// EMMC2 (real RPi 4)
     pub const EMMC_BASE: u64 = 0xFE34_0000;
+    pub const EMMC1_BASE_RASPI3: u64 = 0x3F30_0000; // raspi3b peri_base 0x3F000000
+    /// EMMC1/SDHCI (QEMU raspi4b GPIO default)
+    pub const EMMC1_BASE: u64 = 0xFE30_0000;
 
     pub fn new() -> Self {
+        Self::new_at(Self::EMMC_BASE)
+    }
+
+    pub fn new_at(base: u64) -> Self {
         Self {
-            base: Self::EMMC_BASE as *mut u32,
+            base: base as *mut u32,
             rca: 0,
             is_sdhc: false,
             initialized: false,
@@ -320,6 +394,10 @@ impl SdCard {
         Ok(())
     }
 
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+
     fn read_block_inner(&self, block_index: u64, buf: &mut [u8]) -> Result<(), BlockError> {
         if !self.initialized {
             return Err(BlockError::NotReady);
@@ -373,9 +451,222 @@ impl SdCard {
 
 impl BlockDevice for SdCard {
     fn read_block(&self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
-        // SdCard is not Sync; we use interior mutability pattern by making
-        // read_block take &self and requiring init() before first use.
-        // For simplicity we need &mut for init; after init, reads are safe.
+        self.read_block_inner(offset, buf)
+    }
+
+    fn block_count(&self) -> Option<u64> {
+        self.block_count_cache
+    }
+}
+
+// --- BCM2835 SDHOST (QEMU raspi4b at 0xFE20_2000) ---
+const SDHOST_CMD: u64 = 0x00;
+const SDHOST_ARG: u64 = 0x04;
+const SDHOST_RSP0: u64 = 0x10;
+const SDHOST_RSP1: u64 = 0x14;
+const SDHOST_RSP2: u64 = 0x18;
+const SDHOST_RSP3: u64 = 0x1c;
+const SDHOST_HSTS: u64 = 0x20;
+const SDHOST_VDD: u64 = 0x30;
+const SDHOST_EDM: u64 = 0x34;
+const SDHOST_HCFG: u64 = 0x38;
+const SDHOST_HBCT: u64 = 0x3c;
+const SDHOST_DATA: u64 = 0x40;
+const SDHOST_HBLC: u64 = 0x50;
+
+const SDHOST_CMD_NEW: u32 = 0x8000;
+const SDHOST_CMD_FAIL: u32 = 0x4000;
+const SDHOST_CMD_NO_RESP: u32 = 0x400;
+const SDHOST_CMD_READ: u32 = 0x40;
+const SDHOST_CMD_MASK: u32 = 0x3f;
+
+const SDHOST_HSTS_ERR: u32 = 0xF8; // timeouts, CRC, FIFO
+const SDHOST_HSTS_BUSY: u32 = 0x400;
+
+/// BCM2835 SDHOST controller (QEMU raspi4b maps SD here).
+pub struct SdHost {
+    base: *mut u32,
+    rca: u16,
+    is_sdhc: bool,
+    initialized: bool,
+    block_count_cache: Option<u64>,
+}
+
+impl SdHost {
+    /// raspi4b (BCM2838): peri_base 0xFE000000
+    pub const SDHOST_BASE: u64 = 0xFE20_2000;
+    /// raspi3b (BCM2837): peri_base 0x3F000000
+    pub const SDHOST_BASE_RASPI3: u64 = 0x3F20_2000;
+
+    pub fn new() -> Self {
+        Self::new_at(Self::SDHOST_BASE)
+    }
+
+    pub fn new_at(base: u64) -> Self {
+        Self {
+            base: base as *mut u32,
+            rca: 0,
+            is_sdhc: false,
+            initialized: false,
+            block_count_cache: None,
+        }
+    }
+
+    #[inline]
+    fn reg(&self, off: u64) -> *mut u32 {
+        unsafe { self.base.add(off as usize / 4) }
+    }
+
+    fn read_reg(&self, off: u64) -> u32 {
+        unsafe { read_volatile(self.reg(off)) }
+    }
+
+    fn write_reg(&self, off: u64, val: u32) {
+        unsafe { write_volatile(self.reg(off), val) }
+    }
+
+    fn clear_status(&self, mask: u32) {
+        self.write_reg(SDHOST_HSTS, mask);
+    }
+
+    fn send_cmd(&self, cmd: u32, arg: u32, flags: u32) -> Result<u32, BlockError> {
+        self.clear_status(SDHOST_HSTS_ERR);
+        self.write_reg(SDHOST_ARG, arg);
+        self.write_reg(SDHOST_CMD, (cmd & SDHOST_CMD_MASK) | flags | SDHOST_CMD_NEW);
+        for _ in 0..TIMEOUT_LOOP {
+            let c = self.read_reg(SDHOST_CMD);
+            if (c & SDHOST_CMD_NEW) == 0 {
+                let hsts = self.read_reg(SDHOST_HSTS);
+                if (hsts & SDHOST_HSTS_ERR) != 0 {
+                    return Err(BlockError::Fault("sdhost CMD err"));
+                }
+                return Ok(self.read_reg(SDHOST_RSP0));
+            }
+        }
+        Err(BlockError::Timeout)
+    }
+
+    fn send_cmd_r2(&self, cmd: u32, arg: u32) -> Result<[u32; 4], BlockError> {
+        self.clear_status(SDHOST_HSTS_ERR);
+        self.write_reg(SDHOST_ARG, arg);
+        self.write_reg(
+            SDHOST_CMD,
+            (cmd & SDHOST_CMD_MASK) | 0x200 /* long resp */ | SDHOST_CMD_NEW,
+        );
+        for _ in 0..TIMEOUT_LOOP {
+            let c = self.read_reg(SDHOST_CMD);
+            if (c & SDHOST_CMD_NEW) == 0 {
+                let hsts = self.read_reg(SDHOST_HSTS);
+                if (hsts & SDHOST_HSTS_ERR) != 0 {
+                    return Err(BlockError::Fault("sdhost R2 err"));
+                }
+                return Ok([
+                    self.read_reg(SDHOST_RSP0),
+                    self.read_reg(SDHOST_RSP1),
+                    self.read_reg(SDHOST_RSP2),
+                    self.read_reg(SDHOST_RSP3),
+                ]);
+            }
+        }
+        Err(BlockError::Timeout)
+    }
+
+    fn parse_csd_blocks(r: &[u32; 4]) -> u64 {
+        let structure = (r[0] >> 30) & 3;
+        if structure == 0 {
+            let c_size = ((r[1] & 0x3FF) << 2) | (r[2] >> 30);
+            let c_size_mult = (r[2] >> 15) & 7;
+            let read_bl_len = (r[1] >> 16) & 0xF;
+            let mult = 1u64 << (c_size_mult + 2);
+            let blk = 1u64 << read_bl_len;
+            (u64::from(c_size) + 1) * mult * blk / BLOCK_SIZE as u64
+        } else {
+            let c_size = ((r[1] & 0x3F) << 16) | (r[2] >> 16);
+            ((u64::from(c_size) + 1) * 512 * 1024) / BLOCK_SIZE as u64
+        }
+    }
+
+    pub fn init(&mut self) -> Result<(), BlockError> {
+        if self.initialized {
+            return Ok(());
+        }
+        self.clear_status(0x7FF);
+        self.write_reg(SDHOST_VDD, 1);
+        for _ in 0..1000 {}
+        self.send_cmd(CMD_GO_IDLE, 0, SDHOST_CMD_NO_RESP)?;
+        let _ = self.send_cmd(CMD_SEND_IF_COND, 0x1AA, 0); /* R7 optional */
+        let mut retries = 50;
+        while retries > 0 {
+            self.send_cmd(CMD_APP_CMD, u32::from(self.rca) << 16, 0)?;
+            let r3 = self.send_cmd(CMD_SD_SEND_OP_COND, 0x40FF_8000, 0)?;
+            if r3 & 0x8000_0000 != 0 {
+                self.is_sdhc = (r3 & 0x4000_0000) != 0;
+                break;
+            }
+            retries -= 1;
+            for _ in 0..10000 {}
+        }
+        if retries == 0 {
+            return Err(BlockError::Fault("ACMD41 timeout"));
+        }
+        self.send_cmd(CMD_SEND_CID, 0, 0x200)?;
+        let r6 = self.send_cmd(CMD_SEND_RCA, 0, 0)?;
+        self.rca = (r6 >> 16) as u16;
+        if self.rca == 0 {
+            return Err(BlockError::Fault("no RCA"));
+        }
+        self.send_cmd(CMD_SELECT_CARD, u32::from(self.rca) << 16, 0)?;
+        let csd = self.send_cmd_r2(CMD_SEND_CSD, u32::from(self.rca) << 16)?;
+        self.block_count_cache = Some(Self::parse_csd_blocks(&csd));
+        self.send_cmd(CMD_SET_BLOCKLEN, BLOCK_SIZE as u32, 0)?;
+        self.initialized = true;
+        Ok(())
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+
+    fn read_block_inner(&self, block_index: u64, buf: &mut [u8]) -> Result<(), BlockError> {
+        if !self.initialized {
+            return Err(BlockError::NotReady);
+        }
+        if buf.len() < BLOCK_SIZE {
+            return Err(BlockError::Fault("buf too small"));
+        }
+        let arg = if self.is_sdhc {
+            block_index as u32
+        } else {
+            (block_index * BLOCK_SIZE as u64) as u32
+        };
+        self.clear_status(SDHOST_HSTS_ERR);
+        self.write_reg(SDHOST_HBCT, BLOCK_SIZE as u32);
+        self.write_reg(SDHOST_HBLC, 1);
+        self.write_reg(SDHOST_ARG, arg);
+        self.write_reg(
+            SDHOST_CMD,
+            (CMD_READ_BLOCK & SDHOST_CMD_MASK) | SDHOST_CMD_READ | SDHOST_CMD_NEW,
+        );
+        for _ in 0..TIMEOUT_LOOP {
+            let c = self.read_reg(SDHOST_CMD);
+            if (c & SDHOST_CMD_NEW) == 0 {
+                if (c & SDHOST_CMD_FAIL) != 0 {
+                    return Err(BlockError::Fault("sdhost read err"));
+                }
+                break;
+            }
+        }
+        let data_reg = self.reg(SDHOST_DATA);
+        for i in 0..(BLOCK_SIZE / 4) {
+            let word = unsafe { read_volatile(data_reg) };
+            buf[i * 4..][..4].copy_from_slice(&word.to_le_bytes());
+        }
+        Ok(())
+    }
+}
+
+impl BlockDevice for SdHost {
+    fn read_block(&self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
         self.read_block_inner(offset, buf)
     }
 

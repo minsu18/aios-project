@@ -34,7 +34,10 @@ Run with host Ollama for real LLM responses on `ask`:
 
 Requires: Node 18+, `ollama serve`, `ollama pull llama3.2`. Env: `AIOS_OLLAMA_HOST`, `AIOS_OLLAMA_MODEL`
 
-**SD card (real RPi only):** Put `SKILL.md` in the SD root (first FAT32 partition). The `sd` command reports capacity and SKILL.md presence.
+**SD card (QEMU or real RPi):**
+
+- **QEMU:** Create an SD image: `./tools/make-sd-image.sh [path/to/MODEL.GGUF]`. Run `./tools/simulate-rpi.sh --sd target/aios-sd.img`. If SD init times out on raspi4b, try `--raspi3b` (e.g. `./tools/simulate-rpi.sh --sd target/aios-sd.img --raspi3b`). The kernel tries EMMC2, EMMC1 (raspi4b/raspi3b), then sdhost.
+- **Real RPi:** Put `SKILL.md` and optionally `MODEL.GGUF` in the SD root (first FAT32 partition). The `sd` command reports capacity and file presence.
 
 ## Driver Bridge (Linux)
 

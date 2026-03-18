@@ -14,9 +14,15 @@ cd "$ROOT"
 # Ensure cargo is in PATH (e.g. when run from Cursor/IDE)
 [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
 
+# Optional: --raspi3 for raspi3b (UART 0x3F201000)
+RASPI3=""
+for arg in "$@"; do
+  [[ "$arg" == "--raspi3" ]] && RASPI3="--features raspi3" && break
+done
+
 echo "Building AIOS kernel for Raspberry Pi..."
 
-cargo build -p aios-kernel-rpi --target aarch64-unknown-none --release
+cargo build -p aios-kernel-rpi --target aarch64-unknown-none --release $RASPI3
 
 ELF="$ROOT/target/aarch64-unknown-none/release/kernel"
 IMG="${ELF}8.img"

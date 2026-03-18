@@ -42,6 +42,7 @@
 - [x] Driver bridge (camera, audio) for prototype on Linux
 - [x] Serial bridge (host Ollama for `ask` via UART protocol)
 - [x] Block device (SD/EMMC2 init, read, CSD capacity)
+- [x] QEMU SD support (bcm2835-sdhost at 0xFE20_2000; SdDevice tries EMMC2 then sdhost)
 - [x] FAT32 parser (MBR, root dir, read SKILL.md)
 - [x] SKILL.md frontmatter parsing and tool registration (`load`, `skills`, `skill.tool`)
 - [x] Prototype ↔ kernel bridge (`npm run simulate:rpi`)

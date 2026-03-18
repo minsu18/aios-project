@@ -7,6 +7,9 @@ use crate::block::{BlockDevice, BlockError, BLOCK_SIZE};
 
 /// 8.3 name for "SKILL.md"
 pub const SKILL_MD_83: [u8; 11] = *b"SKILL   MD ";
+/// 8.3 name for "MODEL.GGUF" (extension truncated to 3 chars). Used by load_model (llama feature).
+#[allow(dead_code)]
+pub const MODEL_GGUF_83: [u8; 11] = *b"MODEL   GGU";
 
 fn mbr_partition_lba(buf: &[u8; BLOCK_SIZE]) -> Option<u64> {
     if buf[510] != 0x55 || buf[511] != 0xAA {

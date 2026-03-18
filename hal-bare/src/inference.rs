@@ -17,6 +17,11 @@ extern "C" {
         out: *mut core::ffi::c_char,
         out_len: usize,
     ) -> core::ffi::c_int;
+
+    /// Load model from memory buffer (GGUF). Returns 0 on success, -1 on error.
+    /// Requires llama_linked (libllama.a) and gguf_init_from_buffer.
+    #[cfg(llama_linked)]
+    fn aios_llama_init_from_memory(buf: *const u8, len: usize) -> core::ffi::c_int;
 }
 
 /// Run on-device inference.
@@ -27,13 +32,12 @@ pub fn inference(_input: &str) -> Result<&'static str, &'static str> {
     #[cfg(llama_shim)]
     {
         let prompt_ptr = _input.as_ptr() as *const core::ffi::c_char;
-        let n = unsafe {
-            aios_llama_inference(prompt_ptr, OUT_BUF.as_mut_ptr(), OUT_BUF_LEN)
-        };
+        let out_ptr = core::ptr::addr_of_mut!(OUT_BUF) as *mut core::ffi::c_char;
+        let n = unsafe { aios_llama_inference(prompt_ptr, out_ptr, OUT_BUF_LEN) };
         if n >= 0 {
             let i = (n as usize).min(OUT_BUF_LEN);
             let bytes: &'static [u8] =
-                unsafe { core::slice::from_raw_parts(OUT_BUF.as_ptr() as *const u8, i) };
+                unsafe { core::slice::from_raw_parts(core::ptr::addr_of!(OUT_BUF) as *const u8, i) };
             if let Ok(s) = core::str::from_utf8(bytes) {
                 return Ok(s);
             }
@@ -42,4 +46,28 @@ pub fn inference(_input: &str) -> Result<&'static str, &'static str> {
 
     #[allow(unreachable_code)]
     Err("LLM not available. Requires aarch64-none-elf toolchain for FFI. See docs/HAL_LLAMA_CPP_BAREMETAL.md")
+}
+
+/// Load GGUF model from memory. Call after reading model file into buffer.
+/// Returns Ok(()) on success, Err on failure.
+#[cfg(all(llama_shim, llama_linked))]
+pub fn init_from_memory(buf: &[u8]) -> Result<(), ()> {
+    let n = unsafe { aios_llama_init_from_memory(buf.as_ptr(), buf.len()) };
+    if n == 0 {
+        Ok(())
+    } else {
+        Err(())
+    }
+}
+
+/// Stub when libllama not linked.
+#[cfg(all(llama_shim, not(llama_linked)))]
+pub fn init_from_memory(_buf: &[u8]) -> Result<(), ()> {
+    Err(())
+}
+
+/// Stub when no llama shim.
+#[cfg(not(llama_shim))]
+pub fn init_from_memory(_buf: &[u8]) -> Result<(), ()> {
+    Err(())
 }

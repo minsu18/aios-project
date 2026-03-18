@@ -32,7 +32,10 @@ fn alloc_error(_layout: Layout) -> ! {
 
 // boot.S is compiled by build.rs and linked separately
 
-/// RPi 4 PL011 UART base (BCM2711) (BCM2711)
+/// PL011 UART base: raspi4 0xFE201000 (BCM2711), raspi3 0x3F201000 (BCM2837)
+#[cfg(feature = "raspi3")]
+const UART_BASE: u64 = 0x3F20_1000;
+#[cfg(not(feature = "raspi3"))]
 const UART_BASE: u64 = 0xFE20_1000;
 const UARTDR: u64 = 0x00;  /* Data */
 const UARTFR: u64 = 0x18;  /* Flags: TXFF bit 5 = FIFO full */
@@ -61,7 +64,10 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     aios_hal_bare::init();
     uart_write(b"[ 0.001] HAL init\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
-    uart_write(b"\r\n>> AIOS kernel ready. help, time, load, skills, mem, sd, uptime, cpuinfo, reboot, weather, calc, ask\r\n>> ");
+    uart_write(b"\r\n>> AIOS kernel ready. help, time, load, skills, mem, sd, uptime, cpuinfo, reboot, weather, calc, ask");
+    #[cfg(feature = "llama")]
+    uart_write(b", load_model");
+    uart_write(b"\r\n>> ");
 
     conversation_loop();
 }
@@ -104,6 +110,19 @@ pub(crate) unsafe fn uart_try_read_byte() -> Option<u8> {
 
 const LINE_BUF: usize = 128;
 
+/// Byte length of the last UTF-8 character in buf. Scans backwards for lead byte.
+fn last_utf8_char_len(buf: &[u8]) -> usize {
+    let len = buf.len();
+    if len == 0 {
+        return 0;
+    }
+    let mut i = len;
+    while i > 0 && (buf[i - 1] & 0xC0) == 0x80 {
+        i -= 1;
+    }
+    len - i
+}
+
 fn conversation_loop() -> ! {
     let mut buf = [0u8; LINE_BUF];
     let mut len = 0usize;
@@ -122,9 +141,10 @@ fn conversation_loop() -> ! {
             }
             uart_write(b">> ");
         } else if b == 0x08 || b == 0x7F {
-            /* Backspace or DEL: erase last char */
+            /* Backspace or DEL: erase last UTF-8 character (not just one byte) */
             if len > 0 {
-                len -= 1;
+                let n = last_utf8_char_len(&buf[..len]);
+                len -= n;
                 uart_write(b"\x08 \x08"); /* backspace, space, backspace */
             }
         } else if len < LINE_BUF - 1 {

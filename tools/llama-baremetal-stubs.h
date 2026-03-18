@@ -26,10 +26,30 @@
 #endif
 #include <cstdlib>
 namespace std {
+/* Newlib puts strtol/strtod etc in global ns; C++ expects std:: */
+using ::strtol;
+using ::strtoll;
+using ::strtoul;
+using ::strtoull;
+using ::strtod;
+using ::strtof;
 __attribute__((noreturn)) inline void __throw_length_error(const char*) { abort(); }
 __attribute__((noreturn)) inline void __throw_bad_alloc() { abort(); }
 __attribute__((noreturn)) inline void __throw_logic_error(const char*) { abort(); }
-__attribute__((noreturn)) inline void __throw_runtime_error(const char*) { abort(); }
-__attribute__((noreturn)) inline void __throw_out_of_range_fmt(const char*, ...) { abort(); }
+/* Add only stubs the library needs but does not define (avoids redefinition) */
+__attribute__((noreturn)) inline void __throw_domain_error(const char*) { abort(); }
+__attribute__((noreturn)) inline void __throw_bad_array_new_length() { abort(); }
 }
+#else
+/* C stubs for ggml.c (POSIX clock_gettime absent on bare-metal) */
+#include <time.h>
+#ifndef CLOCK_MONOTONIC
+#define CLOCK_MONOTONIC 1
+#endif
+static inline int ggml_clock_gettime(int clk_id, struct timespec *ts) {
+    (void)clk_id;
+    if (ts) { ts->tv_sec = 0; ts->tv_nsec = 0; }
+    return 0;
+}
+#define clock_gettime ggml_clock_gettime
 #endif

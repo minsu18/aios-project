@@ -8,7 +8,10 @@ use core::fmt::Write;
 const SKILL_BUF_SIZE: usize = 2048;
 
 fn skill_help() {
-    uart_write(b"Commands: help, time, load, skills, mem, sd, uptime, cpuinfo, reboot, weather, calc, ask. (Ctrl+A X exits)");
+    uart_write(b"Commands: help, time, load, skills, mem, sd, uptime, cpuinfo, reboot, weather, calc, ask");
+    #[cfg(feature = "llama")]
+    uart_write(b", load_model");
+    uart_write(b". (Ctrl+A X exits)");
 }
 
 /// Built-in SKILL.md for QEMU/testing when SD is unavailable.
@@ -23,30 +26,16 @@ tools: [
 ---";
 
 fn skill_load() {
-    use crate::block::{BlockError, SdCard};
+    use crate::block::SdDevice;
     use crate::fat32::{find_root_file, read_file_content, SKILL_MD_83};
     use crate::skill_registry;
-    let mut sd = SdCard::new();
-    match sd.init() {
-        Ok(()) => {}
-        Err(BlockError::Timeout) => {
-            uart_write(b"load: SD unavailable, using built-in SKILL.md\r\n");
-            if skill_registry::parse_and_register(BUILTIN_SKILL) {
-                uart_write(b"load: example skill loaded (built-in)");
-            }
-            return;
+    let sd = SdDevice::new();
+    if !sd.is_ready() {
+        uart_write(b"load: SD unavailable, using built-in SKILL.md\r\n");
+        if skill_registry::parse_and_register(BUILTIN_SKILL) {
+            uart_write(b"load: example skill loaded (built-in)");
         }
-        Err(BlockError::NotReady) => {
-            uart_write(b"load: SD not ready");
-            return;
-        }
-        Err(BlockError::Fault(e)) => {
-            let _ = core::fmt::Write::write_fmt(
-                &mut UartWriter,
-                core::format_args!("load: SD fault: {}", e),
-            );
-            return;
-        }
+        return;
     }
     let mut buf = [0u8; SKILL_BUF_SIZE];
     let (cluster, size) = match find_root_file(&sd, &SKILL_MD_83) {
@@ -111,12 +100,79 @@ fn skill_reboot() {
     crate::pm::reboot();
 }
 
-fn skill_sd() {
-    use crate::block::{BlockError, BlockDevice, BLOCK_SIZE, SdCard};
-    use crate::fat32::{read_file_first_block, find_root_file, SKILL_MD_83};
-    let mut sd = SdCard::new();
-    match sd.init() {
+#[cfg(feature = "llama")]
+fn skill_load_model() {
+    use crate::block::SdDevice;
+    use crate::fat32::{find_root_file, read_file_content, MODEL_GGUF_83};
+    use alloc::vec::Vec;
+
+    const MAX_MODEL_SIZE: usize = 24 * 1024 * 1024; // 24MB for small quantized models
+
+    let sd = SdDevice::new();
+    if !sd.is_ready() {
+        uart_write(b"load_model: SD unavailable");
+        return;
+    }
+
+    let (cluster, size) = match find_root_file(&sd, &MODEL_GGUF_83) {
+        Ok(Some(x)) => x,
+        Ok(None) => {
+            uart_write(b"load_model: No MODEL.GGUF in SD root");
+            return;
+        }
+        Err(_) => {
+            uart_write(b"load_model: FAT32 read error");
+            return;
+        }
+    };
+
+    let size_usize = size as usize;
+    if size_usize > MAX_MODEL_SIZE {
+        let _ = core::fmt::Write::write_fmt(
+            &mut UartWriter,
+            core::format_args!(
+                "load_model: model too large ({} MB > {} MB)",
+                size_usize / (1024 * 1024),
+                MAX_MODEL_SIZE / (1024 * 1024)
+            ),
+        );
+        return;
+    }
+
+    let mut buf = Vec::new();
+    if buf.try_reserve_exact(size_usize).is_err() {
+        uart_write(b"load_model: allocation failed");
+        return;
+    }
+    buf.resize(size_usize, 0);
+
+    let n = match read_file_content(&sd, cluster, size, &mut buf) {
+        Ok(n) => n,
+        Err(_) => {
+            uart_write(b"load_model: file read error");
+            return;
+        }
+    };
+
+    match aios_hal_bare::inference::init_from_memory(&buf[..n]) {
         Ok(()) => {
+            let _ = core::fmt::Write::write_fmt(
+                &mut UartWriter,
+                core::format_args!("load_model: OK ({} KB)", n / 1024),
+            );
+        }
+        Err(()) => {
+            uart_write(b"load_model: init failed (invalid GGUF or out of memory)");
+        }
+    }
+}
+
+fn skill_sd() {
+    use crate::block::{BlockError, BlockDevice, BLOCK_SIZE, SdDevice};
+    use crate::fat32::{read_file_first_block, find_root_file, SKILL_MD_83};
+    uart_write(b"SD: probing...\r\n");
+    let sd = SdDevice::new();
+    if sd.is_ready() {
             let blks = sd.block_count();
             let mut buf = [0u8; BLOCK_SIZE];
             match sd.read_block(0, &mut buf) {
@@ -163,15 +219,8 @@ fn skill_sd() {
                     );
                 }
             }
-        }
-        Err(BlockError::NotReady) => uart_write(b"SD: not ready"),
-        Err(BlockError::Timeout) => uart_write(b"SD: init timeout (no card? QEMU?)"),
-        Err(BlockError::Fault(e)) => {
-            let _ = Write::write_fmt(
-                &mut UartWriter,
-                core::format_args!("SD: init fault: {}", e),
-            );
-        }
+    } else {
+        uart_write(b"SD: init timeout (no card? QEMU?)");
     }
 }
 
@@ -257,6 +306,11 @@ pub fn dispatch(line: &str) -> bool {
         skill_load();
         return true;
     }
+    #[cfg(feature = "llama")]
+    if eq_ignore_ascii_case(line, "load_model") || eq_ignore_ascii_case(line, "llama_load") {
+        skill_load_model();
+        return true;
+    }
     if eq_ignore_ascii_case(line, "skills") {
         skill_skills();
         return true;
@@ -277,21 +331,37 @@ pub fn dispatch(line: &str) -> bool {
         skill_reboot();
         return true;
     }
-    if line.len() >= 7 && eq_ignore_ascii_case(&line[..7], "weather") {
-        skill_weather(line[7..].trim());
-        return true;
+    if line.len() >= 7 {
+        if let Some(prefix) = line.get(..7) {
+            if eq_ignore_ascii_case(prefix, "weather") {
+                skill_weather(line.get(7..).unwrap_or("").trim());
+                return true;
+            }
+        }
     }
-    if line.len() > 11 && eq_ignore_ascii_case(&line[..11], "calculator ") {
-        skill_calc(line[11..].trim());
-        return true;
+    if line.len() > 11 {
+        if let Some(prefix) = line.get(..11) {
+            if eq_ignore_ascii_case(prefix, "calculator ") {
+                skill_calc(line.get(11..).unwrap_or("").trim());
+                return true;
+            }
+        }
     }
-    if line.len() > 5 && eq_ignore_ascii_case(&line[..5], "calc ") {
-        skill_calc(line[5..].trim());
-        return true;
+    if line.len() > 5 {
+        if let Some(prefix) = line.get(..5) {
+            if eq_ignore_ascii_case(prefix, "calc ") {
+                skill_calc(line.get(5..).unwrap_or("").trim());
+                return true;
+            }
+        }
     }
-    if line.len() > 4 && eq_ignore_ascii_case(&line[..4], "ask ") {
-        skill_ask(line[4..].trim());
-        return true;
+    if line.len() > 4 {
+        if let Some(prefix) = line.get(..4) {
+            if eq_ignore_ascii_case(prefix, "ask ") {
+                skill_ask(line.get(4..).unwrap_or("").trim());
+                return true;
+            }
+        }
     }
 
     // skill.tool or skill tool args (from loaded SKILL.md)

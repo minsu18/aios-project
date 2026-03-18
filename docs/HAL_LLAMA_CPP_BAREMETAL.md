@@ -12,9 +12,9 @@ Design for on-device LLM inference on Raspberry Pi without an OS.
 ## Integration Steps
 
 1. ~~Add bump allocator~~ — Done. `kernel-rpi/src/allocator.rs`
-2. ~~FFI scaffold~~ — `hal-bare/c/llama_shim.c` provides `aios_llama_inference()`. Built when aarch64-elf-gcc or aarch64-none-elf-gcc available. Returns stub until libllama linked.
-3. **Full llama.cpp** — Run `tools/build-llama-baremetal.sh`. Requires toolchain with newlib (ARM GNU Toolchain from developer.arm.com). ggml/llama need stdio.h, malloc.
-4. **Real shim** — Replace stub in `hal-bare/c/llama_shim.c` with llama_load_model_from_memory, llama_decode, etc. Provide sbrk and file I/O stubs in kernel.
+2. ~~FFI scaffold~~ — `hal-bare/c/llama_shim.c` provides `aios_llama_inference()`. Built when aarch64-elf-gcc or aarch64-none-elf-gcc available.
+3. ~~Full llama.cpp + kernel link~~ — `tools/build-llama-baremetal.sh` builds libllama.a + ggml libs. `--features llama` links them into the kernel; sbrk.c and syscall_stubs.c provide newlib stubs.
+4. ~~**Real shim (inference loop)**~~ — Implemented: `aios_llama_inference` does tokenize → decode loop → greedy sample → detokenize. `aios_llama_init_from_file(path)` loads from path. `aios_llama_init_from_memory(buf, len)` loads GGUF from memory via `gguf_init_from_buffer` (patched in gguf.cpp). Kernel `load_model` command reads MODEL.GGUF from SD root into heap and calls `init_from_memory`. SD works on both real RPi 4 (EMMC2) and QEMU (bcm2835-sdhost via `--sd`).
 
 ## aarch64-none-elf on macOS
 
@@ -34,12 +34,33 @@ Design for on-device LLM inference on Raspberry Pi without an OS.
 - **Patches**: `tools/patches/ggml-impl-cinttypes.patch` adds `#include <cinttypes>` to ggml-impl.h for PRI* macros.
 - **Stubs**: `tools/llama-baremetal-stubs.h` provides PRId64/PRIi64/PRIu64 for aarch64 LP64, and `__throw_*` for -fno-exceptions.
 
-### Full libllama.a Build — Blockers
+### Full libllama.a Build — Status
 
-1. **-ffreestanding**: C++ headers (`<mutex>`, `<cmath>`, `<string>`) error with "not available in freestanding mode". Removing it requires hosted libc.
-2. **std::strto***: newlib's `<cstdlib>` does not put `strtol`, `strtod`, `strtof` in `std::`; `basic_string.h` (stoi/stod/stof) fails.
-3. **Generic target**: `CMAKE_SYSTEM_NAME Generic` limits includes; `clock_gettime`, `CLOCK_MONOTONIC` missing for ggml.c.
-4. **C++ STL**: gguf.cpp, ggml-backend.cpp use std::map, std::string, std::mutex — require full hosted C++.
+**Resolved** (via `tools/llama-baremetal-stubs.h` and build script):
+
+- `__throw_domain_error`, `__throw_bad_array_new_length` — added stubs
+- `std::strtol`, `std::strtod`, etc. — `using ::strtol` etc. in `std` (newlib quirk)
+- `clock_gettime`, `CLOCK_MONOTONIC` — C stub in header
+- `std::mutex` in ggml-threading.cpp — bare-metal no-op (`#else` branch)
+- **ggml-cpu** — `tools/ggml-cpu-baremetal-insert.txt` pthread stubs; `n_threads=1` for bare-metal
+- **ggml-backend-dl/reg** — `tools/dlfcn-baremetal.h` replaces `<dlfcn.h>`
+- **llama-quant.cpp** — `#if !GGML_BARE_METAL` around std::thread blocks; single-thread path when bare-metal
+- **llama-model-loader.cpp** — sync validation instead of `std::async` when `GGML_BARE_METAL`
+
+**libllama.a** — builds successfully for aarch64-none-elf (ARM GNU Toolchain + newlib). Output: `target/llama-build/libllama.a` + `libggml.a`, `libggml-cpu.a`, `libggml-base.a`.
+
+### Kernel Link (--features llama)
+
+The kernel links libllama when:
+
+1. `target/llama-build/libllama.a` (+ ggml libs) exists (from `tools/build-llama-baremetal.sh`)
+2. `cargo build -p aios-kernel-rpi --target aarch64-unknown-none --features llama`
+
+**Components**:
+
+- `hal-bare/c/llama_shim.c` — FFI to llama API (stub or full when linked)
+- `hal-bare/c/sbrk.c` — newlib `_sbrk` (32MB C heap)
+- `hal-bare/c/syscall_stubs.c` — newlib syscall stubs (`_write`, `posix_memalign`, `sysconf`, `lroundf`, etc.)
 
 ### Alternative: RPi OS (aarch64-linux-gnu)
 

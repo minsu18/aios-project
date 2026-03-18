@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # AIOS RPi Simulation — Run Raspberry Pi kernel in QEMU (raspi4b)
 #
-# Usage: ./tools/simulate-rpi.sh
+# Usage: ./tools/simulate-rpi.sh [--sd IMAGE.img] [--raspi3b]
 #
 # Builds kernel8.img, then runs QEMU with raspi4b machine.
 # Serial output appears in the terminal.
+#
+# Options:
+#   --sd IMAGE.img  Use SD card image (from tools/make-sd-image.sh).
+#   --raspi3b       Use raspi3b machine (QEMU SD may work; raspi4b often fails).
 #
 # Exit: Ctrl+A then X
 #
@@ -18,11 +22,31 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-echo "=== AIOS RPi Simulation (QEMU raspi4b) ==="
+SD_IMAGE=""
+MACHINE="raspi4b"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sd)
+      SD_IMAGE="$2"
+      shift 2
+      ;;
+    --raspi3b)
+      MACHINE="raspi3b"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+echo "=== AIOS RPi Simulation (QEMU $MACHINE) ==="
 echo ""
 
-# Build kernel
-./tools/build-rpi.sh
+# Build kernel (raspi3b needs --raspi3 for correct UART address)
+BUILD_ARGS=()
+[[ "$MACHINE" == raspi3b ]] && BUILD_ARGS=(--raspi3)
+./tools/build-rpi.sh "${BUILD_ARGS[@]}"
 
 ELF="$ROOT/target/aarch64-unknown-none/release/kernel"
 KERNEL="${ELF}8.img"
@@ -47,14 +71,35 @@ if ! command -v qemu-system-aarch64 &>/dev/null; then
   exit 1
 fi
 
+# raspi3b: 1 GiB RAM, cortex-a53; raspi4b: 2G RAM, cortex-a72
+if [[ "$MACHINE" == raspi3b ]]; then
+  RAM="1G"
+  CPU="cortex-a53"
+else
+  RAM="2G"
+  CPU="cortex-a72"
+fi
+QEMU_ARGS=(
+  -M "$MACHINE"
+  -m "$RAM"
+  -cpu "$CPU"
+  -smp 4
+  -kernel "$KERNEL"
+  -serial mon:stdio
+  -display none
+)
+
+if [[ -n "$SD_IMAGE" ]]; then
+  if [[ ! -f "$SD_IMAGE" ]]; then
+    echo "SD image not found: $SD_IMAGE"
+    echo "Create one: ./tools/make-sd-image.sh [MODEL.GGUF] target/aios-sd.img"
+    exit 1
+  fi
+  QEMU_ARGS+=(-drive "if=sd,file=$SD_IMAGE,format=raw")
+  echo "SD: $SD_IMAGE"
+fi
+
 echo "Booting in QEMU (Ctrl+A then X to exit)..."
 echo ""
 
-exec qemu-system-aarch64 \
-  -M raspi4b \
-  -m 2G \
-  -cpu cortex-a72 \
-  -smp 4 \
-  -kernel "$KERNEL" \
-  -serial mon:stdio \
-  -display none
+exec qemu-system-aarch64 "${QEMU_ARGS[@]}"
