@@ -87,7 +87,11 @@ cargo run -p aios-boot
 # Or: cd prototype && npm run simulate
 # Without QEMU: npm run simulate:no-vm
 
-# Raspberry Pi: build kernel8.img for RPi 3/4
+# Raspberry Pi: build and simulate (QEMU, no hardware needed)
+./tools/simulate-rpi.sh
+# Exit: Ctrl+A then X
+
+# Raspberry Pi: build kernel8.img for physical SD card boot
 ./tools/build-rpi.sh
 # Copy target/.../kernel8.img to SD card boot partition
 

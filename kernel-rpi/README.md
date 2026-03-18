@@ -1,6 +1,6 @@
 # AIOS Kernel — Raspberry Pi 3/4
 
-Minimal aarch64 kernel for Raspberry Pi. Serial output via PL011 UART.
+Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with echo loop (keyboard input echoed back).
 
 ## Requirements
 

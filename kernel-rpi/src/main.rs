@@ -1,6 +1,6 @@
 //! AIOS Kernel — Raspberry Pi 3/4 (aarch64)
 //!
-//! Bare-metal boot, PL011 UART output, halt.
+//! Bare-metal boot, PL011 UART I/O, echo loop.
 
 #![no_std]
 #![no_main]
@@ -19,8 +19,10 @@ const UARTFBRD: u64 = 0x28;
 const UARTLCR_H: u64 = 0x2C;
 
 const UARTFR_TXFF: u32 = 1 << 5;  /* Transmit FIFO full */
+const UARTFR_RXFE: u32 = 1 << 4;  /* Receive FIFO empty */
 const UARTCR_UARTEN: u32 = 1;
 const UARTCR_TXE: u32 = 1 << 8;
+const UARTCR_RXE: u32 = 1 << 9;   /* Receive enable */
 
 #[no_mangle]
 pub unsafe extern "C" fn kernel_main() -> ! {
@@ -35,10 +37,11 @@ pub unsafe extern "C" fn kernel_main() -> ! {
     uart_write(b"\r\n[ 0.000] UART init\r\n");
     uart_write(b"[ 0.001] HAL init (stub)\r\n");
     uart_write(b"[ 0.002] AI layer: host bridge\r\n");
-    uart_write(b"\r\n>> AIOS kernel ready.\r\n\r\n");
+    uart_write(b"\r\n>> AIOS kernel ready. Type to echo (Ctrl+A X to exit QEMU)\r\n\r\n");
 
     loop {
-        unsafe { core::arch::asm!("wfe"); }
+        let b = uart_read_byte();
+        unsafe { uart_putc(b) }
     }
 }
 
@@ -48,7 +51,7 @@ unsafe fn uart_init() {
     base.add(UARTIBRD as usize / 4).write_volatile(26);  /* 115200 @ 48M */
     base.add(UARTFBRD as usize / 4).write_volatile(1);
     base.add(UARTLCR_H as usize / 4).write_volatile(0x60);  /* 8N1 */
-    base.add(UARTCR as usize / 4).write_volatile(UARTCR_UARTEN | UARTCR_TXE);
+    base.add(UARTCR as usize / 4).write_volatile(UARTCR_UARTEN | UARTCR_TXE | UARTCR_RXE);
 }
 
 unsafe fn uart_putc(b: u8) {
@@ -61,6 +64,12 @@ fn uart_write(s: &[u8]) {
     for &b in s {
         unsafe { uart_putc(b) }
     }
+}
+
+unsafe fn uart_read_byte() -> u8 {
+    let base = UART_BASE as *const u32;
+    while base.add(UARTFR as usize / 4).read_volatile() & UARTFR_RXFE != 0 {}
+    base.add(UARTDR as usize / 4).read_volatile() as u8
 }
 
 struct UartWriter;
