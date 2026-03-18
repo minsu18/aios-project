@@ -13,7 +13,7 @@ pub fn reboot() -> ! {
     let wdog = (PM_BASE + PM_WDOG) as *mut u32;
     unsafe {
         wdog.write_volatile(PM_PASSWORD | 1); // 1 tick
-        rstc.write_volatile(PM_PASSWORD | (PM_RSTC_WRCFG_FULL_RESET << 8));
+        rstc.write_volatile(PM_PASSWORD | PM_RSTC_WRCFG_FULL_RESET); // WRCFG at bits [5:4], no shift
     }
     loop {
         unsafe { core::arch::asm!("wfe"); }

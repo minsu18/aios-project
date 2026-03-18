@@ -37,12 +37,12 @@ const EMMC_CONTROL0: u64 = 0x28;
 const EMMC_CONTROL1: u64 = 0x2c;
 const EMMC_INTERRUPT: u64 = 0x30;
 
-// CMDTM bits
+// CMDTM bits — response type at [17:16]: 00=none, 01=136b, 10=48b, 11=48b+busy (SDHCI)
 const CMDTM_CMD_INDEX: u32 = 24;
 const CMDTM_CMD_ISDATA: u32 = 1 << 21;
-const CMDTM_CMD_RSPNS_48: u32 = 0 << 16;
-const CMDTM_CMD_RSPNS_136: u32 = 1 << 16;
-const CMDTM_CMD_RSPNS_48B: u32 = 2 << 16;
+const CMDTM_CMD_RSPNS_48: u32 = 2 << 16;  // 48-bit short response
+const CMDTM_CMD_RSPNS_136: u32 = 1 << 16; // 136-bit long response
+const CMDTM_CMD_RSPNS_48B: u32 = 3 << 16; // 48-bit with busy
 const CMDTM_CMD_CRCCHK: u32 = 1 << 19;
 const CMDTM_CMD_IXCHK: u32 = 1 << 20;
 const CMDTM_TM_BLKCNT_EN: u32 = 1 << 1;
@@ -361,9 +361,10 @@ impl SdCard {
             }
         }
 
+        // DATA at 0x20 is a FIFO — read repeatedly from same address (not .add(i))
         let data_reg = self.reg(EMMC_DATA);
         for i in 0..(BLOCK_SIZE / 4) {
-            let word = unsafe { read_volatile(data_reg.add(i)) };
+            let word = unsafe { read_volatile(data_reg) };
             buf[i * 4..][..4].copy_from_slice(&word.to_le_bytes());
         }
         Ok(())

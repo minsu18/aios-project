@@ -199,14 +199,19 @@ pub fn read_file_content(
     let mut offset = 0usize;
 
     while offset < max_read && cluster >= 2 && cluster < 0x0FFF_FFF8 {
-        let sector = cluster_to_sector(data_start, sec_per_clu, cluster);
-        let mut block = [0u8; BLOCK_SIZE];
-        dev.read_block(sector, &mut block)?;
+        let first_sector = cluster_to_sector(data_start, sec_per_clu, cluster);
+        for s in 0..u32::from(sec_per_clu) {
+            if offset >= max_read {
+                break;
+            }
+            let sector = first_sector + u64::from(s);
+            let mut block = [0u8; BLOCK_SIZE];
+            dev.read_block(sector, &mut block)?;
 
-        let to_copy = (max_read - offset).min(BLOCK_SIZE);
-        buf[offset..][..to_copy].copy_from_slice(&block[..to_copy]);
-        offset += to_copy;
-
+            let to_copy = (max_read - offset).min(BLOCK_SIZE);
+            buf[offset..][..to_copy].copy_from_slice(&block[..to_copy]);
+            offset += to_copy;
+        }
         if offset >= max_read {
             break;
         }
