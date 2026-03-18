@@ -44,7 +44,7 @@ export function captureFromCamera(device = "/dev/video0"): Buffer | null {
     encoding: "utf8",
     maxBuffer: 50 * 1024 * 1024, // 50MB for large images
   });
-  if (r.status !== 0 || r.stderr) return null;
+  if (r.status !== 0) return null;
   try {
     const out = JSON.parse(r.stdout.trim()) as CameraResult;
     if (!out.ok || !out.data) return null;
@@ -62,7 +62,7 @@ export function captureFromMic(samples = 48000): Buffer | null {
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
   });
-  if (r.status !== 0 || r.stderr) return null;
+  if (r.status !== 0) return null;
   try {
     const out = JSON.parse(r.stdout.trim()) as AudioResult;
     if (!out.ok || !out.data) return null;
