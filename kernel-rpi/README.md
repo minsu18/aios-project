@@ -2,7 +2,7 @@
 
 Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with rule-based conversation loop.
 
-**Commands:** `help`, `time`, `load`, `skills`, `mem`, `sd`, `uptime`, `cpuinfo`, `reboot`, `weather`, `calc`, `ask`[, `load_model` with `--features llama`]. `load` loads SKILL.md from SD (or built-in if SD unavailable). `skills` lists loaded tools. Invoke via `skill.tool` (e.g. `example.get_time`, `example echo hi`). SD: EMMC2 (real RPi) or bcm2835-sdhost (QEMU with `--sd`). `ask` via host bridge or on-device LLM. Backspace correctly removes whole UTF-8 characters (e.g. 한글).
+**Commands:** `help`, `time`, `load`, `skills`, `mem`, `sd`, `uptime`, `cpuinfo`, `reboot`, `weather`, `calc`, `ask`[, `load_model` with `--features llama`]. `load` loads SKILL.md from SD (or built-in if SD unavailable). `skills` lists loaded tools. Invoke via `skill.tool` (e.g. `example.get_time`, `example echo hi`). SD: EMMC2 (real RPi 4) or EMMC1/sdhost (QEMU). **QEMU SD:** may timeout (register layout mismatch); `load` falls back to built-in. Backspace removes whole UTF-8 chars (e.g. 한글).
 
 ## Requirements
 
@@ -22,19 +22,21 @@ Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with rule-based conversa
 
 Output: `target/aarch64-unknown-none/release/kernel8.img`
 
+For **raspi3b** QEMU: `./tools/build-rpi.sh --raspi3` (uses UART 0x3F201000, peri 0x3F*). The simulate script enables this automatically when run with `--raspi3b`.
+
 **On-device LLM** (`load_model`, `ask` without bridge): Build with `--features llama`. Requires `tools/build-llama-baremetal.sh` first. See [docs/HAL_LLAMA_CPP_BAREMETAL.md](../docs/HAL_LLAMA_CPP_BAREMETAL.md).
 
 ## Simulate with QEMU (no hardware needed)
 
-Run the kernel in QEMU using the `raspi4b` machine (QEMU 9.0+):
+Run the kernel in QEMU (QEMU 9.0+):
 
 ```bash
 ./tools/simulate-rpi.sh
-# With SD image (load, load_model from SD in QEMU):
 ./tools/simulate-rpi.sh --sd target/aios-sd.img
+./tools/simulate-rpi.sh --sd target/aios-sd.img --raspi3b   # raspi3b machine
 ```
 
-Create an SD image: `./tools/make-sd-image.sh [path/to/MODEL.GGUF]`. Serial output appears in the terminal. Exit with **Ctrl+A** then **X**.
+**Machines:** raspi4b (default), raspi3b (`--raspi3b`). Create SD image: `./tools/make-sd-image.sh [path/to/MODEL.GGUF]`. Serial output in terminal. Exit: **Ctrl+A** then **X**.
 
 **Requirements:** `qemu-system-aarch64` (macOS: `brew install qemu`, Ubuntu: `apt install qemu-system-aarch64`)
 

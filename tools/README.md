@@ -18,7 +18,11 @@ Run the RPi kernel in QEMU without physical hardware:
 ./tools/simulate-rpi.sh
 ```
 
-Uses `qemu-system-aarch64` with raspi4b machine. Serial output in terminal. Exit: **Ctrl+A** then **X**.
+Uses `qemu-system-aarch64`. Default: **raspi4b**. Add `--raspi3b` for raspi3b machine. Serial output in terminal. Exit: **Ctrl+A** then **X**.
+
+**Options:**
+- `--sd IMAGE.img` — Use SD card image (from `make-sd-image.sh`)
+- `--raspi3b` — Use raspi3b machine (1G RAM, cortex-a53); alternative if raspi4b has issues
 
 **Requirements:** QEMU 9.0+ with `qemu-system-aarch64` (macOS: `brew install qemu`)
 
@@ -36,7 +40,7 @@ Requires: Node 18+, `ollama serve`, `ollama pull llama3.2`. Env: `AIOS_OLLAMA_HO
 
 **SD card (QEMU or real RPi):**
 
-- **QEMU:** Create an SD image: `./tools/make-sd-image.sh [path/to/MODEL.GGUF]`. Run `./tools/simulate-rpi.sh --sd target/aios-sd.img`. If SD init times out on raspi4b, try `--raspi3b` (e.g. `./tools/simulate-rpi.sh --sd target/aios-sd.img --raspi3b`). The kernel tries EMMC2, EMMC1 (raspi4b/raspi3b), then sdhost.
+- **QEMU:** Create an SD image: `./tools/make-sd-image.sh [path/to/MODEL.GGUF]`. Run `./tools/simulate-rpi.sh --sd target/aios-sd.img`. **Limitation:** SD init may timeout in QEMU (driver uses BCM Arasan; QEMU uses generic SDHCI). If so, `load` falls back to built-in SKILL.md. Try `--raspi3b` if raspi4b has issues.
 - **Real RPi:** Put `SKILL.md` and optionally `MODEL.GGUF` in the SD root (first FAT32 partition). The `sd` command reports capacity and file presence.
 
 ## Driver Bridge (Linux)

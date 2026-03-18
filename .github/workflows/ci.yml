@@ -17,7 +17,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
         with:
-          components: rustfmt, llvm-tools
+          components: rustfmt, llvm-tools, rust-src
           targets: aarch64-unknown-none
 
       - name: Install ARM toolchain
@@ -70,7 +70,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: prototype/package-lock.json
 

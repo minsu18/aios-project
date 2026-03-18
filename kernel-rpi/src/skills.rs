@@ -170,7 +170,6 @@ fn skill_load_model() {
 fn skill_sd() {
     use crate::block::{BlockError, BlockDevice, BLOCK_SIZE, SdDevice};
     use crate::fat32::{read_file_first_block, find_root_file, SKILL_MD_83};
-    uart_write(b"SD: probing...\r\n");
     let sd = SdDevice::new();
     if sd.is_ready() {
             let blks = sd.block_count();
