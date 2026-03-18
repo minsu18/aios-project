@@ -77,7 +77,6 @@ fn conversation_loop() -> ! {
 
     loop {
         let b = unsafe { uart_read_byte() };
-        unsafe { uart_putc(b) }
 
         if b == b'\r' || b == b'\n' {
             uart_write(b"\r\n");
@@ -89,9 +88,16 @@ fn conversation_loop() -> ! {
                 len = 0;
             }
             uart_write(b">> ");
+        } else if b == 0x08 || b == 0x7F {
+            /* Backspace or DEL: erase last char */
+            if len > 0 {
+                len -= 1;
+                uart_write(b"\x08 \x08"); /* backspace, space, backspace */
+            }
         } else if len < LINE_BUF - 1 {
             buf[len] = b;
             len += 1;
+            unsafe { uart_putc(b) }
         }
     }
 }
