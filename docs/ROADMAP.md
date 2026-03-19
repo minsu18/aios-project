@@ -46,3 +46,10 @@
 - [x] FAT32 parser (MBR, root dir, read SKILL.md)
 - [x] SKILL.md frontmatter parsing and tool registration (`load`, `skills`, `skill.tool`)
 - [x] Prototype ↔ kernel bridge (`npm run simulate:rpi`)
+
+## Phase 7 (RPi real device & SD)
+
+- [ ] Real RPi 4 boot validation — USB-TTL, `sd`, `load` from SD (EMMC2 at 0xFE340000)
+- [ ] QEMU SDHCI driver — Generic SDHCI register layout for QEMU; `load` from SD image without timeout
+- [ ] HDMI/framebuffer output (optional) — Display driver for testing without USB-TTL
+- [ ] On-device `load_model` — GGUF from SD, inference on bare metal (`--features llama`; see HAL_LLAMA_CPP_BAREMETAL.md)
