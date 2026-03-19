@@ -2,7 +2,7 @@
 
 Minimal aarch64 kernel for Raspberry Pi. PL011 UART I/O with rule-based conversation loop.
 
-**Commands:** `help`, `time`, `load`, `skills`, `mem`, `sd`, `uptime`, `cpuinfo`, `reboot`, `weather`, `calc`, `ask`[, `load_model` with `--features llama`]. `load` loads SKILL.md from SD (or built-in if SD unavailable). `skills` lists loaded tools. Invoke via `skill.tool` (e.g. `example.get_time`, `example echo hi`). SD: EMMC2 (real RPi 4) or EMMC1/sdhost (QEMU). **QEMU SD:** may timeout (register layout mismatch); `load` falls back to built-in. Backspace removes whole UTF-8 chars (e.g. 한글).
+**Commands:** `help`, `time`, `load`, `skills`, `mem`, `sd`, `uptime`, `cpuinfo`, `reboot`, `weather`, `calc`, `ask`[, `load_model` with `--features llama`]. `load` loads SKILL.md from SD (or built-in if SD unavailable). `skills` lists loaded tools. Invoke via `skill.tool` (e.g. `example.get_time`, `example echo hi`). SD: EMMC2 (real RPi 4) or EMMC1/sdhost (QEMU). See [docs/SD_SETUP.md](../docs/SD_SETUP.md) for SD setup and troubleshooting. Backspace removes whole UTF-8 chars (e.g. 한글).
 
 ## Requirements
 

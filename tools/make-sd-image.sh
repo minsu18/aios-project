@@ -10,8 +10,16 @@
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${2:-$ROOT/target/aios-sd.img}"
-MODEL_PATH="$1"
+if [[ $# -eq 1 && "$1" == *.img ]]; then
+    OUT="$1"
+    MODEL_PATH=""
+elif [[ $# -ge 2 ]]; then
+    MODEL_PATH="$1"
+    OUT="$2"
+else
+    OUT="${2:-$ROOT/target/aios-sd.img}"
+    MODEL_PATH="${1:-}"
+fi
 SIZE_MB=64
 RESERVED=2048  # sectors for MBR + alignment
 
@@ -64,7 +72,51 @@ fi
 
 dd if="$TMP_PART" of="$OUT" seek="$RESERVED" bs=512 conv=notrunc 2>/dev/null
 
-# Copy MODEL.GGUF if provided
+# Copy SKILL.md first (clusters 3,4...); MODEL uses 5+ to avoid overlap
+if [[ -f "$ROOT/SKILL.md" ]]; then
+    if command -v mcopy &>/dev/null; then
+        export MTOOLS_SKIP_CHECK=1
+        mcopy -i "$OUT"@@${PART_OFFSET} "$ROOT/SKILL.md" "::/SKILL.MD"
+    else
+        # Fallback: inject SKILL.md without mtools (matches mkfs.vfat -s 1 layout)
+        python3 - "$OUT" "$PART_OFFSET" "$ROOT/SKILL.md" << 'PY2'
+import sys
+img_path, part_off, skill_path = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+with open(skill_path, "rb") as f:
+    data = f.read()
+RES, NFAT, SPF, ROOT_CL = 32, 2, 993, 2
+fat_start = part_off + RES * 512
+data_start = part_off + (RES + NFAT * SPF) * 512
+root_sec = data_start + (ROOT_CL - 2) * 512
+n_clusters = max(1, (len(data) + 511) // 512)
+first_cl = 3
+name = b"SKILL   MD "
+ent = bytearray(32)
+ent[0:11] = name
+ent[11] = 0x20
+ent[26:28] = first_cl.to_bytes(2, "little")
+ent[28:32] = len(data).to_bytes(4, "little")
+with open(img_path, "r+b") as f:
+    f.seek(root_sec + 32)
+    f.write(ent)
+    for i in range(n_clusters):
+        sec = data_start + (first_cl + i - 2) * 512
+        f.seek(sec)
+        chunk = data[i*512:(i+1)*512].ljust(512, b"\0")
+        f.write(chunk)
+    for fa in range(2):
+        base = fat_start + fa * SPF * 512
+        for i in range(n_clusters):
+            cl = first_cl + i
+            f.seek(base + cl * 4)
+            val = (first_cl + i + 1) if i + 1 < n_clusters else 0x0FFFFFFF
+            f.write(val.to_bytes(4, "little"))
+print("  SKILL.md injected (Python fallback)")
+PY2
+    fi
+fi
+
+# Copy MODEL.GGUF if provided (clusters 5+ to avoid overlap with SKILL)
 if [[ -n "$MODEL_PATH" && -f "$MODEL_PATH" ]]; then
     echo "Adding $(basename "$MODEL_PATH")..."
     if command -v mcopy &>/dev/null; then
@@ -72,15 +124,45 @@ if [[ -n "$MODEL_PATH" && -f "$MODEL_PATH" ]]; then
         mcopy -i "$OUT"@@${PART_OFFSET} "$MODEL_PATH" "::/MODEL.GGU"
         echo "  Copied as MODEL.GGU (8.3)"
     else
-        echo "  Install mtools (brew install mtools) to auto-copy, or copy manually to SD."
-    fi
-fi
-
-# Copy SKILL.md if present
-if [[ -f "$ROOT/SKILL.md" ]]; then
-    if command -v mcopy &>/dev/null; then
-        export MTOOLS_SKIP_CHECK=1
-        mcopy -i "$OUT"@@${PART_OFFSET} "$ROOT/SKILL.md" "::/SKILL.MD"
+        MODEL_SIZE=$(stat -f%z "$MODEL_PATH" 2>/dev/null || stat -c%s "$MODEL_PATH" 2>/dev/null)
+        if [[ -n "$MODEL_SIZE" && "$MODEL_SIZE" -le 262144 ]]; then
+            python3 - "$OUT" "$PART_OFFSET" "$MODEL_PATH" << 'PYMODEL'
+import sys
+img_path, part_off, model_path = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+with open(model_path, "rb") as f:
+    data = f.read()
+RES, NFAT, SPF = 32, 2, 993
+fat_start = part_off + RES * 512
+data_start = part_off + (RES + NFAT * SPF) * 512
+root_sec = data_start
+n_clusters = max(1, (len(data) + 511) // 512)
+first_cl = 5  # SKILL uses 3,4
+name = b"MODEL   GGU"
+ent = bytearray(32)
+ent[0:11] = name
+ent[11] = 0x20
+ent[26:28] = first_cl.to_bytes(2, "little")
+ent[28:32] = len(data).to_bytes(4, "little")
+with open(img_path, "r+b") as f:
+    f.seek(root_sec + 64)
+    f.write(ent)
+    for i in range(n_clusters):
+        sec = data_start + (first_cl + i - 2) * 512
+        f.seek(sec)
+        chunk = data[i*512:(i+1)*512].ljust(512, b"\0")
+        f.write(chunk)
+    for fa in range(2):
+        base = fat_start + fa * SPF * 512
+        for i in range(n_clusters):
+            cl = first_cl + i
+            f.seek(base + cl * 4)
+            val = (first_cl + i + 1) if i + 1 < n_clusters else 0x0FFFFFFF
+            f.write(val.to_bytes(4, "little"))
+print("  MODEL.GGU injected (Python fallback, max 256KB)")
+PYMODEL
+        else
+            echo "  Install mtools (brew install mtools) for models >256KB, or use a smaller model."
+        fi
     fi
 fi
 

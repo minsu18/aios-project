@@ -26,7 +26,7 @@ SECTIONS
         . = ALIGN(16);
         __bss_end = .;
         __stack_bottom = .;
-        . = . + 0x10000;  /* 64KB stack */
+        . = . + 0x20000;  /* 128KB stack (REPL + load_model + fat32 need more) */
         __stack_top = .;
     }
 

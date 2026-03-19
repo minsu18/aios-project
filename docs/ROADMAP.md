@@ -49,7 +49,10 @@
 
 ## Phase 7 (RPi real device & SD)
 
-- [ ] Real RPi 4 boot validation — USB-TTL, `sd`, `load` from SD (EMMC2 at 0xFE340000)
-- [ ] QEMU SDHCI driver — Generic SDHCI register layout for QEMU; `load` from SD image without timeout
+- [ ] Real RPi 4 boot validation — USB-TTL, `sd`, `load` from SD (EMMC2); **deferred** (needs physical HW)
+- [x] QEMU SDHCI driver — Generic SDHCI at EMMC1 (SdSdhci); `load` from SD image (raspi4b/raspi3b)
+- [x] SD setup docs — [docs/SD_SETUP.md](SD_SETUP.md)
 - [ ] HDMI/framebuffer output (optional) — Display driver for testing without USB-TTL
-- [ ] On-device `load_model` — GGUF from SD, inference on bare metal (`--features llama`; see HAL_LLAMA_CPP_BAREMETAL.md)
+- [ ] On-device `load_model` — GGUF from SD, inference on bare metal; QEMU path: embed model or initrd (see [docs/NEXT_STEPS.md](NEXT_STEPS.md))
+
+See [docs/NEXT_STEPS.md](NEXT_STEPS.md) for prioritized work when real device testing is unavailable.

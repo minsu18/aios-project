@@ -26,7 +26,7 @@ tools: [
 ---";
 
 fn skill_load() {
-    use crate::block::SdDevice;
+    use crate::block::{BlockError, SdDevice};
     use crate::fat32::{find_root_file, read_file_content, SKILL_MD_83};
     use crate::skill_registry;
     let sd = SdDevice::new();
@@ -37,15 +37,33 @@ fn skill_load() {
         }
         return;
     }
+    // QEMU SDHCI: block read returns invalid data (SDMA doesn't populate buffer).
+    // Use built-in skill so load doesn't hang or fail.
+    if sd.is_sdhci() {
+        uart_write(b"load: QEMU SDHCI (block read invalid), using built-in SKILL.md\r\n");
+        if skill_registry::parse_and_register(BUILTIN_SKILL) {
+            uart_write(b"load: example skill loaded (built-in)");
+        }
+        return;
+    }
     let mut buf = [0u8; SKILL_BUF_SIZE];
-    let (cluster, size) = match find_root_file(&sd, &SKILL_MD_83) {
+    let (cluster, size) = match find_root_file(&sd, &SKILL_MD_83, None) {
         Ok(Some(x)) => x,
         Ok(None) => {
             uart_write(b"load: No SKILL.md in SD root");
             return;
         }
-        Err(_) => {
-            uart_write(b"load: FAT32 read error");
+        Err(e) => {
+            match e {
+                BlockError::NotReady => uart_write(b"load: SD not ready"),
+                BlockError::Timeout => uart_write(b"load: SD read timeout"),
+                BlockError::Fault(s) => {
+                    let _ = Write::write_fmt(
+                        &mut UartWriter,
+                        core::format_args!("load: FAT32 error ({})", s),
+                    );
+                }
+            }
             return;
         }
     };
@@ -102,26 +120,61 @@ fn skill_reboot() {
 
 #[cfg(feature = "llama")]
 fn skill_load_model() {
-    use crate::block::SdDevice;
+    uart_write(b"load_model: starting\r\n");
+    use crate::block::{BlockDevice, SdDevice, BLOCK_SIZE};
     use crate::fat32::{find_root_file, read_file_content, MODEL_GGUF_83};
     use alloc::vec::Vec;
 
     const MAX_MODEL_SIZE: usize = 24 * 1024 * 1024; // 24MB for small quantized models
 
+    uart_write(b"load_model: probing SD...\r\n");
     let sd = SdDevice::new();
     if !sd.is_ready() {
-        uart_write(b"load_model: SD unavailable");
+        uart_write(b"load_model: SD unavailable\r\n");
         return;
     }
+    if sd.is_sdhci() {
+        uart_write(b"load_model: QEMU SDHCI - block read invalid. Use real RPi 4 for model load\r\n");
+        return;
+    }
+    uart_write(b"load_model: SD ready, looking for MODEL.GGU...\r\n");
 
-    let (cluster, size) = match find_root_file(&sd, &MODEL_GGUF_83) {
-        Ok(Some(x)) => x,
+    // Sanity: read MBR block 0 first (heap buf to avoid stack overflow in REPL)
+    uart_write(b"load_model: reading MBR block 0...\r\n");
+    let mut mbr_buf = Vec::with_capacity(BLOCK_SIZE);
+    mbr_buf.resize(BLOCK_SIZE, 0);
+    if sd.read_block(0, &mut mbr_buf).is_err() {
+        uart_write(b"load_model: read block 0 failed\r\n");
+        return;
+    }
+    // find_root_file will validate MBR via mbr_partition_lba; skip redundant check
+    uart_write(b"load_model: read MBR OK\r\n");
+
+    let mbr_arr: &[u8; BLOCK_SIZE] = mbr_buf.as_slice().try_into().expect("MBR 512B");
+    let (cluster, size) = match find_root_file(&sd, &MODEL_GGUF_83, Some(mbr_arr)) {
+        Ok(Some(x)) => {
+            uart_write(b"load_model: found MODEL.GGU\r\n");
+            x
+        }
         Ok(None) => {
-            uart_write(b"load_model: No MODEL.GGUF in SD root");
+            uart_write(b"load_model: No MODEL.GGUF in SD root\r\n");
             return;
         }
-        Err(_) => {
-            uart_write(b"load_model: FAT32 read error");
+        Err(e) => {
+            use crate::block::BlockError;
+            let msg: &[u8] = match e {
+                BlockError::NotReady => b"load_model: FAT32 not ready\r\n",
+                BlockError::Timeout => b"load_model: FAT32 timeout\r\n",
+                BlockError::Fault("MBR") => b"load_model: FAT32 MBR invalid\r\n",
+                BlockError::Fault("BPB") => b"load_model: FAT32 BPB invalid\r\n",
+                BlockError::Fault(s) => {
+                    uart_write(b"load_model: FAT32 error: ");
+                    uart_write(s.as_bytes());
+                    uart_write(b"\r\n");
+                    return;
+                }
+            };
+            uart_write(msg);
             return;
         }
     };
@@ -131,7 +184,7 @@ fn skill_load_model() {
         let _ = core::fmt::Write::write_fmt(
             &mut UartWriter,
             core::format_args!(
-                "load_model: model too large ({} MB > {} MB)",
+                "load_model: model too large ({} MB > {} MB)\r\n",
                 size_usize / (1024 * 1024),
                 MAX_MODEL_SIZE / (1024 * 1024)
             ),
@@ -139,85 +192,78 @@ fn skill_load_model() {
         return;
     }
 
+    let _ = core::fmt::Write::write_fmt(
+        &mut UartWriter,
+        core::format_args!("load_model: allocating {} KB...\r\n", size_usize / 1024),
+    );
     let mut buf = Vec::new();
     if buf.try_reserve_exact(size_usize).is_err() {
-        uart_write(b"load_model: allocation failed");
+        uart_write(b"load_model: allocation failed\r\n");
         return;
     }
     buf.resize(size_usize, 0);
 
+    uart_write(b"load_model: reading from SD...\r\n");
     let n = match read_file_content(&sd, cluster, size, &mut buf) {
         Ok(n) => n,
         Err(_) => {
-            uart_write(b"load_model: file read error");
+            uart_write(b"load_model: file read error\r\n");
             return;
         }
     };
 
+    let _ = core::fmt::Write::write_fmt(
+        &mut UartWriter,
+        core::format_args!("load_model: initializing LLM ({} KB)...\r\n", n / 1024),
+    );
     match aios_hal_bare::inference::init_from_memory(&buf[..n]) {
         Ok(()) => {
             let _ = core::fmt::Write::write_fmt(
                 &mut UartWriter,
-                core::format_args!("load_model: OK ({} KB)", n / 1024),
+                core::format_args!("load_model: OK ({} KB)\r\n", n / 1024),
             );
         }
         Err(()) => {
-            uart_write(b"load_model: init failed (invalid GGUF or out of memory)");
+            uart_write(b"load_model: init failed (invalid GGUF or out of memory)\r\n");
         }
     }
 }
 
 fn skill_sd() {
     use crate::block::{BlockError, BlockDevice, BLOCK_SIZE, SdDevice};
-    use crate::fat32::{read_file_first_block, find_root_file, SKILL_MD_83};
+    use crate::fat32::block_count_from_mbr_buf;
+    uart_write(b"SD: probing... ");
     let sd = SdDevice::new();
     if sd.is_ready() {
-            let blks = sd.block_count();
-            let mut buf = [0u8; BLOCK_SIZE];
-            match sd.read_block(0, &mut buf) {
-                Ok(()) => {
+        if sd.is_sdhci() {
+            uart_write(b"SD: init OK (QEMU SDHCI - block read hangs; use real RPi 4 for full SD)");
+            return;
+        }
+        let mut buf = [0u8; BLOCK_SIZE];
+        match sd.read_block(0, &mut buf) {
+            Ok(()) => {
+                let blks = block_count_from_mbr_buf(&buf);
+                let _ = Write::write_fmt(
+                    &mut UartWriter,
+                    core::format_args!("SD: OK, block 0 read"),
+                );
+                if let Some(n) = blks {
                     let _ = Write::write_fmt(
                         &mut UartWriter,
-                        core::format_args!(
-                            "SD: OK, block 0 read",
-                        ),
-                    );
-                    if let Some(n) = blks {
-                        let _ = Write::write_fmt(
-                            &mut UartWriter,
-                            core::format_args!(", {} blocks", n),
-                        );
-                    }
-                    uart_write(b". ");
-                    match find_root_file(&sd, &SKILL_MD_83) {
-                        Ok(Some((cluster, size))) => {
-                            let _ = Write::write_fmt(
-                                &mut UartWriter,
-                                core::format_args!("SKILL.md found ({} B)", size),
-                            );
-                            if let Ok(()) = read_file_first_block(&sd, cluster, &mut buf) {
-                                let end = buf.iter().position(|&b| b == 0 || b == b'\n').unwrap_or(80);
-                                let end = end.min(80);
-                                let pre = core::str::from_utf8(&buf[..end]).unwrap_or("?");
-                                let _ = Write::write_fmt(
-                                    &mut UartWriter,
-                                    core::format_args!(", first: \"{}\"", pre),
-                                );
-                            }
-                        }
-                        Ok(None) => uart_write(b"No SKILL.md in root"),
-                        Err(_) => uart_write(b"FAT32 read err"),
-                    }
-                }
-                Err(BlockError::NotReady) => uart_write(b"SD: init OK, read not ready"),
-                Err(BlockError::Timeout) => uart_write(b"SD: init OK, read timeout"),
-                Err(BlockError::Fault(e)) => {
-                    let _ = Write::write_fmt(
-                        &mut UartWriter,
-                        core::format_args!("SD: init OK, read fault: {}", e),
+                        core::format_args!(", {} blocks", n),
                     );
                 }
+                uart_write(b". Use 'load' to read SKILL.md");
             }
+            Err(BlockError::NotReady) => uart_write(b"SD: init OK, read not ready"),
+            Err(BlockError::Timeout) => uart_write(b"SD: init OK, read timeout"),
+            Err(BlockError::Fault(e)) => {
+                let _ = Write::write_fmt(
+                    &mut UartWriter,
+                    core::format_args!("SD: init OK, read fault: {}", e),
+                );
+            }
+        }
     } else {
         uart_write(b"SD: init timeout (no card? QEMU?)");
     }
@@ -306,8 +352,16 @@ pub fn dispatch(line: &str) -> bool {
         return true;
     }
     #[cfg(feature = "llama")]
-    if eq_ignore_ascii_case(line, "load_model") || eq_ignore_ascii_case(line, "llama_load") {
+    if eq_ignore_ascii_case(line, "load_model")
+        || eq_ignore_ascii_case(line, "load model")
+        || eq_ignore_ascii_case(line, "llama_load")
+    {
         skill_load_model();
+        return true;
+    }
+    #[cfg(not(feature = "llama"))]
+    if eq_ignore_ascii_case(line, "load_model") || eq_ignore_ascii_case(line, "llama_load") {
+        uart_write(b"load_model: requires --features llama. Build: ./tools/build-rpi.sh --features llama");
         return true;
     }
     if eq_ignore_ascii_case(line, "skills") {

@@ -133,8 +133,17 @@ fn conversation_loop() -> ! {
         if b == b'\r' || b == b'\n' {
             uart_write(b"\r\n");
             if len > 0 {
-                let line = core::str::from_utf8(&buf[..len]).unwrap_or("");
-                let line = line.trim();
+                let mut ascii = [0u8; LINE_BUF];
+                let mut n = 0usize;
+                for &b in &buf[..len] {
+                    if (b >= 0x20 && b < 0x7F) || b == b'\t' {
+                        if n < LINE_BUF - 1 {
+                            ascii[n] = b;
+                            n += 1;
+                        }
+                    }
+                }
+                let line = core::str::from_utf8(&ascii[..n]).unwrap_or("").trim();
                 handle_command(line);
                 uart_write(b"\r\n");
                 len = 0;
@@ -155,12 +164,36 @@ fn conversation_loop() -> ! {
     }
 }
 
+/// Normalize line: collapse runs of whitespace to single space, trim.
+/// No alloc. Result in out[..n]. Enables "load  model" and "  sd  " to work.
+fn normalize_line_inplace<'a>(line: &str, out: &'a mut [u8; LINE_BUF]) -> &'a str {
+    let mut n = 0usize;
+    let mut prev_space = true;
+    for b in line.trim().bytes() {
+        if b == b' ' || b == b'\t' {
+            if !prev_space {
+                prev_space = true;
+                if n < out.len().saturating_sub(1) {
+                    out[n] = b' ';
+                    n += 1;
+                }
+            }
+        } else if n < out.len() {
+            out[n] = b;
+            n += 1;
+            prev_space = false;
+        }
+    }
+    core::str::from_utf8(&out[..n]).unwrap_or("")
+}
+
 fn handle_command(line: &str) {
-    // Discard stray bridge protocol lines (late reply after timeout)
     if line.starts_with("AIOS_BRIDGE_REPLY:") || line.starts_with("AIOS_BRIDGE_ASK:") {
         return;
     }
-    if !skills::dispatch(line) {
+    let mut norm_buf = [0u8; LINE_BUF];
+    let normalized = normalize_line_inplace(line, &mut norm_buf);
+    if !normalized.is_empty() && !skills::dispatch(normalized) {
         uart_write(line.as_bytes());
     }
 }

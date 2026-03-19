@@ -1,15 +1,38 @@
 //! Minimal FAT32 read-only parser.
 //!
 //! Parses first partition from MBR, reads root directory, finds files by 8.3 name.
-//! Used to load SKILL.md from SD. No allocator; stack-only.
+//! Used to load SKILL.md from SD. Uses heap for buffers when called from load_model (avoids stack overflow).
 
 use crate::block::{BlockDevice, BlockError, BLOCK_SIZE};
+use alloc::vec::Vec;
+
+fn alloc_block() -> Vec<u8> {
+    let mut v = Vec::with_capacity(BLOCK_SIZE);
+    v.resize(BLOCK_SIZE, 0);
+    v
+}
 
 /// 8.3 name for "SKILL.md"
 pub const SKILL_MD_83: [u8; 11] = *b"SKILL   MD ";
 /// 8.3 name for "MODEL.GGUF" (extension truncated to 3 chars). Used by load_model (llama feature).
 #[allow(dead_code)]
 pub const MODEL_GGUF_83: [u8; 11] = *b"MODEL   GGU";
+
+/// Infer block count from MBR partition table (no read).
+pub fn block_count_from_mbr_buf(buf: &[u8; BLOCK_SIZE]) -> Option<u64> {
+    if buf[510] != 0x55 || buf[511] != 0xAA {
+        return None;
+    }
+    let typ = buf[0x1C2];
+    if typ != 0x0B && typ != 0x0C {
+        return None;
+    }
+    let start =
+        u32::from_le_bytes([buf[0x1C6], buf[0x1C7], buf[0x1C8], buf[0x1C9]]) as u64;
+    let num =
+        u32::from_le_bytes([buf[0x1CA], buf[0x1CB], buf[0x1CC], buf[0x1CD]]) as u64;
+    Some(start.saturating_add(num))
+}
 
 fn mbr_partition_lba(buf: &[u8; BLOCK_SIZE]) -> Option<u64> {
     if buf[510] != 0x55 || buf[511] != 0xAA {
@@ -102,16 +125,16 @@ fn find_in_dir(
     None
 }
 
-/// Read FAT entry for cluster.
+/// Read FAT entry for cluster. Reuses caller-provided buffer to avoid stack allocation.
 fn read_fat_entry(
     dev: &impl BlockDevice,
     fat_start: u64,
     cluster: u32,
+    buf: &mut [u8],
 ) -> Result<u32, BlockError> {
     let fat_offset = (u64::from(cluster)) * 4 / BLOCK_SIZE as u64;
     let sector = fat_start + fat_offset;
-    let mut buf = [0u8; BLOCK_SIZE];
-    dev.read_block(sector, &mut buf)?;
+    dev.read_block(sector, buf)?;
     let idx = (cluster as usize % 128) * 4;
     let entry = u32::from_le_bytes([buf[idx], buf[idx + 1], buf[idx + 2], buf[idx + 3]]);
     Ok(entry & 0x0FFF_FFFF)
@@ -126,39 +149,51 @@ fn cluster_to_sector(
 }
 
 /// Look up file in root directory. Returns (first cluster, size) if found.
+/// Uses heap buffers to avoid stack overflow when called from load_model.
+/// If mbr is Some, use it instead of reading block 0 (caller already has it).
 pub fn find_root_file(
     dev: &impl BlockDevice,
     name_83: &[u8; 11],
+    mbr: Option<&[u8; BLOCK_SIZE]>,
 ) -> Result<Option<(u32, u32)>, BlockError> {
-    let mut mbr = [0u8; BLOCK_SIZE];
-    dev.read_block(0, &mut mbr)?;
-    let part_start = mbr_partition_lba(&mbr).ok_or(BlockError::Fault("MBR"))?;
+    let part_start = match mbr {
+        Some(m) => mbr_partition_lba(m).ok_or(BlockError::Fault("MBR"))?,
+        None => {
+            let mut buf = alloc_block();
+            dev.read_block(0, &mut buf)?;
+            let arr: &[u8; BLOCK_SIZE] = buf.as_slice().try_into().map_err(|_| BlockError::Fault("MBR"))?;
+            mbr_partition_lba(arr).ok_or(BlockError::Fault("MBR"))?
+        }
+    };
 
-    let mut bpb_buf = [0u8; BLOCK_SIZE];
+    let mut bpb_buf = alloc_block();
     dev.read_block(part_start, &mut bpb_buf)?;
+    let bpb_arr: &[u8; BLOCK_SIZE] = bpb_buf.as_slice().try_into().map_err(|_| BlockError::Fault("BPB"))?;
     let (reserved, sec_per_clu, _sec_per_fat, root_cluster, data_start_lba) =
-        bpb_params(&bpb_buf).ok_or(BlockError::Fault("BPB"))?;
+        bpb_params(bpb_arr).ok_or(BlockError::Fault("BPB"))?;
 
     let fat_start = part_start + u64::from(reserved);
     let data_start = part_start + data_start_lba;
 
     let mut cluster = root_cluster;
     let mut seen = 0u32;
+    let mut dir_buf = alloc_block();
     while cluster < 0x0FFF_FFF8 && seen < 64 {
         let sector = cluster_to_sector(data_start, sec_per_clu, cluster);
-        let mut dir_buf = [0u8; BLOCK_SIZE];
         dev.read_block(sector, &mut dir_buf)?;
-        if let Some(((lo, hi), size)) = find_in_dir(&dir_buf, name_83) {
+        let dir_arr: &[u8; BLOCK_SIZE] = dir_buf.as_slice().try_into().map_err(|_| BlockError::Fault("dir"))?;
+        if let Some(((lo, hi), size)) = find_in_dir(dir_arr, name_83) {
             let first_cluster = u32::from(lo) | (u32::from(hi) << 16);
             return Ok(Some((first_cluster, size)));
         }
-        cluster = read_fat_entry(dev, fat_start, cluster)?;
+        cluster = read_fat_entry(dev, fat_start, cluster, &mut dir_buf)?;
         seen += 1;
     }
     Ok(None)
 }
 
 /// Read first block of file. Call find_root_file first to get cluster.
+#[allow(dead_code)]
 pub fn read_file_first_block(
     dev: &impl BlockDevice,
     first_cluster: u32,
@@ -179,20 +214,23 @@ pub fn read_file_first_block(
 }
 
 /// Read full file content into buf (up to buf.len()). Returns bytes read.
+/// Uses heap for sector buffer to avoid stack overflow in load_model.
 pub fn read_file_content(
     dev: &impl BlockDevice,
     first_cluster: u32,
     file_size: u32,
     buf: &mut [u8],
 ) -> Result<usize, BlockError> {
-    let mut mbr = [0u8; BLOCK_SIZE];
+    let mut mbr = alloc_block();
     dev.read_block(0, &mut mbr)?;
-    let part_start = mbr_partition_lba(&mbr).ok_or(BlockError::Fault("MBR"))?;
+    let mbr_arr: &[u8; BLOCK_SIZE] = mbr.as_slice().try_into().map_err(|_| BlockError::Fault("MBR"))?;
+    let part_start = mbr_partition_lba(mbr_arr).ok_or(BlockError::Fault("MBR"))?;
 
-    let mut bpb_buf = [0u8; BLOCK_SIZE];
+    let mut bpb_buf = alloc_block();
     dev.read_block(part_start, &mut bpb_buf)?;
+    let bpb_arr: &[u8; BLOCK_SIZE] = bpb_buf.as_slice().try_into().map_err(|_| BlockError::Fault("BPB"))?;
     let (reserved, sec_per_clu, _sec_per_fat, _, data_start_lba) =
-        bpb_params(&bpb_buf).ok_or(BlockError::Fault("BPB"))?;
+        bpb_params(bpb_arr).ok_or(BlockError::Fault("BPB"))?;
 
     let fat_start = part_start + u64::from(reserved);
     let data_start = part_start + data_start_lba;
@@ -200,6 +238,7 @@ pub fn read_file_content(
 
     let mut cluster = first_cluster;
     let mut offset = 0usize;
+    let mut block = alloc_block();
 
     while offset < max_read && cluster >= 2 && cluster < 0x0FFF_FFF8 {
         let first_sector = cluster_to_sector(data_start, sec_per_clu, cluster);
@@ -208,7 +247,6 @@ pub fn read_file_content(
                 break;
             }
             let sector = first_sector + u64::from(s);
-            let mut block = [0u8; BLOCK_SIZE];
             dev.read_block(sector, &mut block)?;
 
             let to_copy = (max_read - offset).min(BLOCK_SIZE);
@@ -218,7 +256,7 @@ pub fn read_file_content(
         if offset >= max_read {
             break;
         }
-        cluster = read_fat_entry(dev, fat_start, cluster)?;
+        cluster = read_fat_entry(dev, fat_start, cluster, &mut block)?;
     }
     Ok(offset)
 }

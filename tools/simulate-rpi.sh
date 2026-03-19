@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # AIOS RPi Simulation — Run Raspberry Pi kernel in QEMU (raspi4b)
 #
-# Usage: ./tools/simulate-rpi.sh [--sd IMAGE.img] [--raspi3b]
+# Usage: ./tools/simulate-rpi.sh [--sd IMAGE.img] [--raspi3b] [--llama]
 #
 # Builds kernel8.img, then runs QEMU with raspi4b machine.
 # Serial output appears in the terminal.
@@ -9,6 +9,7 @@
 # Options:
 #   --sd IMAGE.img  Use SD card image (from tools/make-sd-image.sh).
 #   --raspi3b       Use raspi3b machine (QEMU SD may work; raspi4b often fails).
+#   --llama         Build with llama feature (load_model from SD; run build-llama-baremetal.sh first).
 #
 # Exit: Ctrl+A then X
 #
@@ -24,6 +25,7 @@ cd "$ROOT"
 
 SD_IMAGE=""
 MACHINE="raspi4b"
+LLAMA=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sd)
@@ -32,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --raspi3b)
       MACHINE="raspi3b"
+      shift
+      ;;
+    --llama)
+      LLAMA="1"
       shift
       ;;
     *)
@@ -43,9 +49,14 @@ done
 echo "=== AIOS RPi Simulation (QEMU $MACHINE) ==="
 echo ""
 
-# Build kernel (raspi3b needs --raspi3 for correct UART address)
+# Build kernel (raspi3b needs --raspi3; --llama enables load_model; --sd uses sdhost_first then sdhci_first)
+FEATURES=""
+[[ "$MACHINE" == raspi3b ]] && FEATURES="raspi3"
+[[ -n "$LLAMA" ]] && FEATURES="${FEATURES:+$FEATURES }llama"
+[[ -n "$SD_IMAGE" ]] && FEATURES="${FEATURES:+$FEATURES }sdhost_first sdhci_first"
+[[ -n "$SD_IMAGE" ]] && [[ -n "$LLAMA" ]] && FEATURES="${FEATURES:+$FEATURES }sd_debug"
 BUILD_ARGS=()
-[[ "$MACHINE" == raspi3b ]] && BUILD_ARGS=(--raspi3)
+[[ -n "$FEATURES" ]] && BUILD_ARGS=(--features "$FEATURES")
 ./tools/build-rpi.sh "${BUILD_ARGS[@]}"
 
 ELF="$ROOT/target/aarch64-unknown-none/release/kernel-rpi"
