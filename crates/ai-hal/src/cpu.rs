@@ -420,6 +420,7 @@ mod tests {
     // ── /proc/stat 파싱 테스트 ─────────────────
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_read_proc_stat_success() {
         // /proc/stat 읽기 및 파싱 성공 확인
         let snap = LinuxCpuHal::read_proc_stat();
@@ -448,16 +449,17 @@ mod tests {
     #[test]
     fn test_cpu_times_usage_calculation() {
         // 델타 기반 사용률 계산 검증
+        // prev total = 100+0+50+850 = 1000, curr total = 350+0+100+900 = 1350
+        // delta_total = 350, delta_idle = 900-850 = 50
+        // usage = 1 - (50/350) ≈ 0.857
         let prev = CpuTimes {
             user: 100, nice: 0, system: 50, idle: 850,
             iowait: 0, irq: 0, softirq: 0, steal: 0,
         };
         let curr = CpuTimes {
-            user: 200, nice: 0, system: 100, idle: 900,
+            user: 350, nice: 0, system: 100, idle: 900,
             iowait: 0, irq: 0, softirq: 0, steal: 0,
         };
-        // delta_total = 350, delta_idle = 50
-        // usage = 1 - (50/350) ≈ 0.857
         let usage = curr.usage_since(&prev);
         let expected = 1.0 - (50.0 / 350.0);
         assert!((usage - expected).abs() < 1e-9, "예상: {}, 실제: {}", expected, usage);
@@ -482,6 +484,7 @@ mod tests {
     // ── CPU 상태 조회 통합 테스트 ──────────────
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_read_cpu_state_valid() {
         // 실제 CPU 상태 조회 (100ms 소요)
         let result = LinuxCpuHal::read_cpu_state();
@@ -504,6 +507,7 @@ mod tests {
     // ── sched_setaffinity 테스트 ───────────────
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_get_affinity_self() {
         // 현재 프로세스(pid=0) 어피니티 조회 검증
         let hal = LinuxCpuHal::new();
@@ -521,6 +525,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_set_affinity_invalid_core() {
         // 존재하지 않는 코어 번호로 set_affinity → InvalidParameter
         let hal = LinuxCpuHal::new();

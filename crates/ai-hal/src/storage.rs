@@ -771,8 +771,9 @@ mod tests {
         let _ = result; // 결과는 플랫폼에 따라 다를 수 있음
     }
 
-    /// `list_mount_states()` 기본 동작 테스트.
+    /// `list_mount_states()` 기본 동작 테스트. Linux `/proc/mounts` 전용.
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_list_mount_states() {
         let mounts = LinuxStorageHal::list_mount_states();
         // /proc/mounts 는 항상 최소 1개 이상의 마운트 포인트를 가짐

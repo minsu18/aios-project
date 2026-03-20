@@ -336,6 +336,7 @@ mod tests {
     // ── /proc/meminfo 파싱 테스트 ──────────────
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_read_meminfo_returns_valid_state() {
         // 실제 /proc/meminfo 파싱 결과 검증 (Linux 환경)
         let result = LinuxMemoryHal::read_meminfo();
@@ -437,6 +438,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_query_state_inner_returns_memory_state() {
         // query_state_inner()가 유효한 Memory 상태 반환하는지 확인
         let hal = LinuxMemoryHal::new();
