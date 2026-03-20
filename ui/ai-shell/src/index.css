@@ -1,0 +1,115 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (C) 2025 AIOS Contributors */
+
+/* ── Tailwind 기본 지시자 ─────────────────────────────────── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── 전역 베이스 ─────────────────────────────────────────── */
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background-color: #0A0A0F;
+    color: #E2E8F0;
+  }
+
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* 스크롤바 스타일링 (WebKit) */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #111118;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1E1E2E;
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #6366F1;
+  }
+
+  /* 포커스 아웃라인 */
+  *:focus-visible {
+    outline: 1px solid #6366F1;
+    outline-offset: 2px;
+  }
+}
+
+/* ── 커스텀 컴포넌트 클래스 ──────────────────────────────── */
+@layer components {
+  /* 패널 공통 스타일 */
+  .aios-panel {
+    @apply bg-[#111118] border border-[#1E1E2E];
+  }
+
+  /* 카드 공통 스타일 */
+  .aios-card {
+    @apply bg-[#16161F] border border-[#1E1E2E] rounded-lg;
+  }
+
+  /* 모노스페이스 텍스트 */
+  .aios-mono {
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  }
+
+  /* 배지 */
+  .aios-badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* 상태 도트 */
+  .status-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+}
+
+/* ── 커서 블링크 ──────────────────────────────────────────── */
+.cursor-blink::after {
+  content: "▌";
+  animation: blink 1s step-end infinite;
+  color: #6366F1;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* ── 게이지 바 전환 ───────────────────────────────────────── */
+.gauge-bar {
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── 메시지 등장 애니메이션 ──────────────────────────────── */
+.message-appear {
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
