@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2025 minsu18 <https://github.com/minsu18>
+# Project : AI-OS — https://github.com/minsu18/aios-project
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "aios-intent-engine"
+version = "0.1.0"
+description = "AI-OS Intent Engine — 자연어를 HAL 명령으로 변환하는 파이프라인"
+authors = [{ name = "minsu18", email = "minsu18@github.com" }]
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.11"
+
+# 런타임 의존성 (M0: 표준 라이브러리만 사용)
+dependencies = []
+
+# 선택 의존성 (M1에서 활성화)
+# [project.optional-dependencies]
+# ondevice = ["llama-cpp-python>=0.2.0"]
+# cloud   = ["anthropic>=0.20.0"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "mypy>=1.8",
+    "ruff>=0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["intent_engine*"]
+
+# ── ruff 설정 ─────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "ANN", "B"]
+ignore = [
+    "ANN101",  # self 타입 힌트 불필요
+    "ANN102",  # cls 타입 힌트 불필요
+]
+
+# ── mypy 설정 ─────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+
+# ── pytest 설정 ───────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

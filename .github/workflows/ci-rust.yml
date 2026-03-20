@@ -2,7 +2,7 @@
 # Copyright (C) 2025 minsu18 <https://github.com/minsu18>
 # Project : AI-OS — https://github.com/minsu18/aios-project
 #
-# HAL Rust 크레이트 CI 워크플로우
+# Rust HAL 크레이트 CI 워크플로우
 # 트리거: main/develop 브랜치 push 또는 PR
 
 name: CI — Rust HAL
@@ -14,63 +14,90 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - ".github/workflows/ci-rust.yml"
   pull_request:
     branches: [main, develop]
     paths:
       - "crates/**"
       - "Cargo.toml"
+      - "Cargo.lock"
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # MSRV (Minimum Supported Rust Version)
-  RUST_VERSION: "1.75"
 
 jobs:
-  # ── 빌드 및 테스트 ──
+  # ── 빌드 및 테스트 ──────────────────────────
   build-and-test:
     name: Build & Test (Rust ${{ matrix.rust }})
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
-        rust: ["1.75", "stable"]  # MSRV + latest stable
+        rust:
+          - "1.75"   # MSRV (Minimum Supported Rust Version)
+          - "stable" # 최신 안정 버전
+
     steps:
       - name: 소스 체크아웃
         uses: actions/checkout@v4
 
-      - name: Rust 툴체인 설치
+      - name: Rust 툴체인 설치 (${{ matrix.rust }})
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: rustfmt, clippy
 
-      - name: Cargo 캐시 복원
+      - name: Cargo 캐시 복원 (빌드 속도 개선)
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "."
+          key: ${{ matrix.rust }}
 
-      - name: 빌드 (ai-hal)
+      - name: 빌드 — ai-hal (기본)
         run: cargo build -p ai-hal --verbose
 
-      - name: 빌드 (mock feature 포함)
+      - name: 빌드 — ai-hal (mock feature 포함)
         run: cargo build -p ai-hal --features mock --verbose
 
-      - name: 단위 테스트 실행
+      - name: 단위 테스트 실행 (mock feature)
         run: cargo test -p ai-hal --features mock -- --nocapture
 
-      - name: Clippy 린트 검사
+      - name: Clippy 린트 (경고 = 에러)
         run: cargo clippy -p ai-hal --features mock -- -D warnings
 
-      - name: 코드 포맷 검사
+      - name: 코드 포맷 검사 (stable만 실행)
+        if: matrix.rust == 'stable'
         run: cargo fmt -p ai-hal --check
 
-  # ── 보안 취약점 감사 ──
-  security-audit:
-    name: Security Audit
+  # ── AGPL 라이선스 헤더 검사 ─────────────────
+  license-check:
+    name: AGPL License Header Check
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: cargo-audit 설치 및 실행
+      - name: Rust 파일 AGPL 헤더 확인
+        run: |
+          MISSING=0
+          for f in $(find crates -name "*.rs" 2>/dev/null); do
+            if ! grep -q "SPDX-License-Identifier: AGPL-3.0-or-later" "$f"; then
+              echo "❌ AGPL 헤더 없음: $f"
+              MISSING=$((MISSING+1))
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "총 ${MISSING}개 파일에 AGPL 헤더 없음"
+            exit 1
+          fi
+          echo "✅ 모든 Rust 파일에 AGPL 헤더 있음"
+
+  # ── 보안 취약점 감사 ─────────────────────────
+  security-audit:
+    name: Security Audit (cargo-audit)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-audit 설치 및 취약점 검사
         uses: rustsec/audit-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
