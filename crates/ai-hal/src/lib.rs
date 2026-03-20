@@ -53,6 +53,8 @@ pub mod memory;
 pub mod cpu;
 /// Linux 블록 스토리지 제어 (statfs + 직접 I/O)
 pub mod storage;
+/// STRIDE 기반 HAL 보안 방어 레이어 (파라미터 인젝션 / 토큰 위조 / DoS)
+pub mod security;
 
 // ─────────────────────────────────────────────
 //  주요 타입 재내보내기 (public API)
@@ -930,6 +932,7 @@ mod tests {
             total_bytes: 100,
             used_bytes: 40,
             available_bytes: 60,
+            block_size: 4096,
             mount_point: std::path::PathBuf::from("/"),
             fs_type: "ext4".to_string(),
         };

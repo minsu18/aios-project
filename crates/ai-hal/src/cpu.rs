@@ -539,8 +539,9 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_logical_core_count_at_least_one() {
-        // 논리 코어 수는 항상 1 이상
+        // 논리 코어 수는 항상 1 이상 (Linux 전용: /proc/stat 기반)
         let cores = LinuxCpuHal::logical_core_count();
         assert!(cores >= 1, "코어 수가 0입니다");
     }
