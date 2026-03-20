@@ -9,34 +9,73 @@
 
 //! # ai-hal
 //!
-//! AI-OS Hardware Abstraction Layer (HAL) 핵심 크레이트.
+//! AI-OS Hardware Abstraction Layer (HAL) 루트 크레이트.
 //!
-//! ## 설계 원칙
-//! - AI Core가 앱 없이 하드웨어를 직접 제어하는 추상 인터페이스 제공
-//! - capability-based 권한 모델: 토큰 없이는 어떤 HAL 연산도 불가
-//! - 모든 HAL 연산은 감사 로그(audit log)에 기록됨
+//! ## 모듈 구조
+//! ```text
+//! ai-hal
+//! ├── lib.rs      — 공통 타입 + AiHalInterface trait + LinuxHal + MockHal
+//! ├── error.rs    — HalError 에러 타입 (SyscallFailed 포함)
+//! ├── memory.rs   — LinuxMemoryHal (/proc/meminfo + mmap/munmap)
+//! ├── cpu.rs      — LinuxCpuHal (/proc/stat + sched_setaffinity)
+//! └── storage.rs  — LinuxStorageHal (statfs + 블록 I/O)
+//! ```
 //!
 //! ## 아키텍처 위치
+//! ```text
+//! AI Core (Python) → ai-core-bridge → ai-hal → Linux Kernel → Hardware
 //! ```
-//! AI Core (Python) → ai-core-bridge → ai-hal (이 크레이트) → Linux Kernel
+//!
+//! ## 빠른 시작
+//! ```rust
+//! use ai_hal::{LinuxHal, AiHalInterface, ResourceType, CapabilityToken};
+//!
+//! let hal = LinuxHal::new();
+//! let token = CapabilityToken {
+//!     skill_name: "my-skill".to_string(),
+//!     permissions: vec![ResourceType::Memory],
+//! };
+//! let result = hal.query_state(&token, ResourceType::Memory);
+//! assert!(result.outcome.is_ok());
 //! ```
 
-#![forbid(unsafe_code)] // 안전하지 않은 코드 금지 (명시적 unsafe 블록만 허용)
 #![warn(missing_docs, clippy::all)]
+
+// ─────────────────────────────────────────────
+//  서브모듈 선언
+// ─────────────────────────────────────────────
+
+/// HAL 에러 타입 (SyscallFailed 포함)
+pub mod error;
+/// Linux 메모리 직접 제어 (/proc/meminfo + mmap)
+pub mod memory;
+/// Linux CPU 스케줄링 제어 (/proc/stat + sched_setaffinity)
+pub mod cpu;
+/// Linux 블록 스토리지 제어 (statfs + 직접 I/O)
+pub mod storage;
+
+// ─────────────────────────────────────────────
+//  주요 타입 재내보내기 (public API)
+// ─────────────────────────────────────────────
+
+pub use error::HalError;
+pub use memory::LinuxMemoryHal;
+pub use cpu::LinuxCpuHal;
+pub use storage::LinuxStorageHal;
 
 use std::fmt;
 use std::time::SystemTime;
 
 // ─────────────────────────────────────────────
-//  섹션 1: 리소스 타입 정의
+//  섹션 1: 리소스 타입
 // ─────────────────────────────────────────────
 
-/// HAL이 제어할 수 있는 하드웨어 리소스 종류.
+/// HAL이 직접 제어할 수 있는 하드웨어 리소스 종류.
 ///
-/// M0에서는 Memory / Cpu / Storage 구현,
-/// M2 이후 Gpu / Audio / Camera / Network 추가 예정.
+/// M0: Memory / Cpu / Storage 구현
+/// M2+: Gpu / Audio / Camera 추가 예정
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[non_exhaustive] // 미래 변형 추가를 위해 non_exhaustive 사용
+#[non_exhaustive]
 pub enum ResourceType {
     /// 시스템 메인 메모리 (RAM)
     Memory,
@@ -44,90 +83,86 @@ pub enum ResourceType {
     Cpu,
     /// 영구 저장장치 (HDD/SSD/NVMe)
     Storage,
-    /// 그래픽 처리 장치 (M2 이후 구현)
+    /// 그래픽 처리 장치 (M2+)
     Gpu,
-    /// 오디오 입출력 (M2 이후 구현)
+    /// 오디오 입출력 (M2+)
     Audio,
-    /// 카메라 입력 (M2 이후 구현)
+    /// 카메라 입력 (M2+)
     Camera,
     /// 네트워크 인터페이스
     Network,
+    /// 디스플레이 (M2+)
+    Display,
 }
 
 impl fmt::Display for ResourceType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = match self {
-            Self::Memory => "Memory",
-            Self::Cpu => "CPU",
+        let s = match self {
+            Self::Memory  => "Memory",
+            Self::Cpu     => "CPU",
             Self::Storage => "Storage",
-            Self::Gpu => "GPU",
-            Self::Audio => "Audio",
-            Self::Camera => "Camera",
+            Self::Gpu     => "GPU",
+            Self::Audio   => "Audio",
+            Self::Camera  => "Camera",
             Self::Network => "Network",
+            Self::Display => "Display",
         };
-        write!(f, "{}", name)
+        write!(f, "{}", s)
     }
 }
 
 // ─────────────────────────────────────────────
-//  섹션 2: HAL 명령 정의
+//  섹션 2: HAL 명령 타입
 // ─────────────────────────────────────────────
 
-/// AI Core → HAL로 전달되는 명령 열거형.
+/// AI Core → HAL 명령 열거형.
 ///
 /// 모든 명령은 `CapabilityToken`을 동반해야 실행됨.
-/// 설계 참조: capability-based security (Saltzer & Schroeder, 1975)
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum HalCommand {
-    /// 지정 리소스의 현재 상태를 조회
+    /// 리소스 현재 상태 조회 (read-only)
     QueryState {
-        /// 조회할 리소스 종류
+        /// 조회 대상 리소스
         resource: ResourceType,
-        /// 상세 조회 여부 (false = 요약, true = 전체)
+        /// true: 상세 정보 포함, false: 요약만
         detailed: bool,
     },
-
     /// 메모리 영역 할당 요청
     AllocateMemory {
         /// 요청 바이트 수
         size_bytes: usize,
-        /// 메모리 정렬 요구사항 (2의 거듭제곱)
+        /// 메모리 정렬 요구 (2의 거듭제곱, 최소 4096)
         alignment: usize,
-        /// 이 할당이 공유 가능한지 여부
+        /// 다른 프로세스와 공유 가능 여부 (MAP_SHARED vs MAP_PRIVATE)
         shared: bool,
     },
-
-    /// 이전에 할당된 메모리 해제
+    /// 할당된 메모리 해제
     FreeMemory {
-        /// 해제할 메모리 핸들 (AllocateMemory 결과로 받은 ID)
+        /// 해제할 메모리 핸들
         handle: MemoryHandle,
     },
-
-    /// CPU 스케줄링 힌트 제공 (강제 아님, OS 권고)
+    /// CPU 스케줄링 힌트 (강제 아님, OS 권고)
     CpuSchedulingHint {
-        /// 대상 태스크 식별자
-        task_id: u64,
-        /// 우선순위 레벨 (0 = 최저, 255 = 최고)
+        /// 대상 태스크 PID (0 = 호출 프로세스)
+        pid: u32,
+        /// 우선순위 (0 = 최저, 255 = 최고)
         priority: u8,
-        /// 선호 CPU 코어 번호 (None이면 OS 결정)
+        /// 선호 CPU 코어 번호 (None = OS 결정)
         preferred_core: Option<usize>,
     },
-
-    /// 스토리지 경로에 대한 읽기 스트림 열기
+    /// 스토리지 경로 읽기 스트림 열기
     OpenStorageRead {
-        /// 접근할 경로
+        /// 읽을 파일 경로
         path: std::path::PathBuf,
     },
-
-    /// 스토리지 경로에 대한 쓰기 스트림 열기
+    /// 스토리지 경로 쓰기 스트림 열기
     OpenStorageWrite {
-        /// 접근할 경로
+        /// 쓸 파일 경로
         path: std::path::PathBuf,
-        /// 파일이 없으면 생성할지 여부
+        /// 파일 없으면 생성 여부
         create_if_missing: bool,
     },
-
     /// Skill을 HAL 런타임에 등록
     RegisterSkill {
         /// Skill 메타데이터
@@ -136,19 +171,17 @@ pub enum HalCommand {
 }
 
 // ─────────────────────────────────────────────
-//  섹션 3: HAL 응답 / 상태 타입
+//  섹션 3: 응답 및 상태 타입
 // ─────────────────────────────────────────────
 
-/// HAL 명령 실행 결과.
+/// HAL 명령 실행 결과 묶음 (감사 엔트리 + 결과).
 ///
-/// 성공 시 `HalResult::Ok(HalResponse)`, 실패 시 `HalResult::Err(HalError)`.
-/// 표준 `Result<T, E>` 대신 자체 타입을 사용하는 이유:
-/// 감사 로그에 항상 결과가 기록되어야 하기 때문.
+/// 실패해도 `audit`은 항상 기록됨 — 보안 감사 추적 보장.
 #[derive(Debug)]
 pub struct HalResult {
-    /// 실행된 명령의 감사 엔트리
+    /// 감사 엔트리: 항상 생성됨
     pub audit: AuditEntry,
-    /// 실제 실행 결과
+    /// 실행 결과: Ok(HalResponse) 또는 Err(HalError)
     pub outcome: Result<HalResponse, HalError>,
 }
 
@@ -156,15 +189,15 @@ pub struct HalResult {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum HalResponse {
-    /// 상태 조회 응답
+    /// 리소스 상태 응답
     ResourceState(ResourceState),
-    /// 메모리 할당 성공 응답
+    /// 메모리 할당 성공
     MemoryAllocated(MemoryHandle),
     /// 스토리지 스트림 핸들
     StorageHandle(StorageHandle),
     /// Skill 등록 성공 토큰
     SkillRegistered(SkillToken),
-    /// 응답 데이터가 없는 성공 (e.g. FreeMemory)
+    /// 응답 데이터 없는 성공 (FreeMemory 등)
     Ok,
 }
 
@@ -172,122 +205,175 @@ pub enum HalResponse {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum ResourceState {
-    /// 메모리 상태
+    /// 메모리 상태 (/proc/meminfo 기반)
     Memory(MemoryState),
-    /// CPU 상태
+    /// CPU 상태 (/proc/stat 기반)
     Cpu(CpuState),
-    /// 스토리지 상태
+    /// 스토리지 상태 (statfs 기반)
     Storage(StorageState),
 }
 
 /// 메모리 상태 스냅샷.
+///
+/// `/proc/meminfo` 파싱 결과.
 #[derive(Debug, Clone)]
 pub struct MemoryState {
     /// 총 물리 메모리 (바이트)
     pub total_bytes: u64,
-    /// 현재 사용 중인 메모리 (바이트)
+    /// 사용 중인 메모리 (바이트) = total - available
     pub used_bytes: u64,
-    /// 사용 가능한 메모리 (바이트)
-    pub free_bytes: u64,
-    /// 페이지 크기 (바이트)
+    /// 커널이 사용 가능하다고 보고하는 메모리 (MemAvailable)
+    pub available_bytes: u64,
+    /// 버퍼 캐시 (바이트)
+    pub buffers_bytes: u64,
+    /// 페이지 캐시 (바이트)
+    pub cached_bytes: u64,
+    /// 시스템 페이지 크기 (바이트, 보통 4096)
     pub page_size: usize,
 }
 
 impl MemoryState {
-    /// 메모리 사용률을 0.0 ~ 1.0 범위로 반환.
+    /// 메모리 사용률 (0.0 ~ 1.0).
+    ///
+    /// 계산식: (total - available) / total
     pub fn usage_ratio(&self) -> f64 {
-        if self.total_bytes == 0 {
-            return 0.0;
-        }
+        if self.total_bytes == 0 { return 0.0; }
         self.used_bytes as f64 / self.total_bytes as f64
+    }
+
+    /// 사용 중인 메모리를 사람이 읽기 편한 형식으로 반환 (GiB).
+    pub fn used_gib(&self) -> f64 {
+        self.used_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
     }
 }
 
 /// CPU 상태 스냅샷.
+///
+/// `/proc/stat` 파싱 결과.
 #[derive(Debug, Clone)]
 pub struct CpuState {
     /// 논리 코어 수
     pub logical_cores: usize,
-    /// 각 코어별 사용률 (0.0 ~ 1.0)
+    /// 각 코어별 사용률 (0.0 ~ 1.0).
+    /// 두 번의 `/proc/stat` 읽기 델타로 계산.
     pub per_core_usage: Vec<f64>,
-    /// 현재 CPU 주파수 (MHz)
+    /// 전체 CPU 평균 사용률
+    pub total_usage: f64,
+    /// 현재 CPU 주파수 MHz
+    /// (`/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq`)
     pub frequency_mhz: u64,
+    /// CPU 모델 이름 (`/proc/cpuinfo`)
+    pub model_name: String,
 }
 
 /// 스토리지 상태 스냅샷.
+///
+/// `statfs()` syscall 결과.
 #[derive(Debug, Clone)]
 pub struct StorageState {
     /// 총 용량 (바이트)
     pub total_bytes: u64,
     /// 사용 중인 용량 (바이트)
     pub used_bytes: u64,
-    /// 마운트 포인트 경로
+    /// 사용 가능한 용량 (바이트, root 제외)
+    pub available_bytes: u64,
+    /// 파일시스템 기본 블록 크기 (바이트, 보통 4096)
+    pub block_size: u32,
+    /// 조회한 마운트 포인트 경로
     pub mount_point: std::path::PathBuf,
+    /// 파일시스템 타입 (예: "ext4", "btrfs", "tmpfs")
+    pub fs_type: String,
+}
+
+impl StorageState {
+    /// 스토리지 사용률 (0.0 ~ 1.0).
+    pub fn usage_ratio(&self) -> f64 {
+        if self.total_bytes == 0 { return 0.0; }
+        self.used_bytes as f64 / self.total_bytes as f64
+    }
 }
 
 // ─────────────────────────────────────────────
 //  섹션 4: 핸들 및 토큰 타입
 // ─────────────────────────────────────────────
 
-/// 할당된 메모리 영역을 식별하는 불투명 핸들.
-/// 내부 구현을 숨겨 HAL 외부에서 직접 조작 불가.
+/// mmap으로 할당된 메모리 영역의 불투명 핸들.
+///
+/// HAL 외부에서 직접 포인터 접근 불가 — 안전성 보장.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MemoryHandle(u64);
 
 impl MemoryHandle {
-    /// 새 메모리 핸들 생성 (HAL 내부에서만 사용)
+    /// 새 핸들 생성 (HAL 내부 전용).
     #[doc(hidden)]
-    pub fn new(id: u64) -> Self {
-        Self(id)
-    }
-
-    /// 핸들의 원시 ID 반환
-    pub fn raw_id(&self) -> u64 {
-        self.0
-    }
+    pub fn new(id: u64) -> Self { Self(id) }
+    /// 핸들 원시 ID 반환.
+    pub fn raw_id(&self) -> u64 { self.0 }
 }
 
 /// 열린 스토리지 스트림 핸들.
+///
+/// `Fd` 변형: Linux 저수준 파일 디스크립터 기반 핸들.
+/// `Id` 변형: 추상 핸들 ID (Mock/테스트용).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct StorageHandle(u64);
+pub enum StorageHandle {
+    /// Linux 파일 디스크립터 (open(2) 반환값)
+    Fd(i32),
+    /// 불투명 핸들 ID (테스트/추상 계층용)
+    Id(u64),
+}
 
 impl StorageHandle {
-    /// 새 스토리지 핸들 생성 (HAL 내부에서만 사용)
+    /// 추상 ID 핸들 생성 (HAL 내부 전용).
     #[doc(hidden)]
-    pub fn new(id: u64) -> Self {
-        Self(id)
+    pub fn new(id: u64) -> Self { Self::Id(id) }
+    /// 핸들 원시 ID 반환.
+    pub fn raw_id(&self) -> u64 {
+        match self {
+            Self::Fd(fd) => *fd as u64,
+            Self::Id(id) => *id,
+        }
     }
 }
 
-/// Skill 등록 성공 시 발급되는 capability 토큰.
-/// 이 토큰 없이는 어떤 HAL 연산도 요청 불가.
+/// Skill 등록 후 발급되는 capability 토큰.
+///
+/// 이 토큰 없이는 어떤 HAL 연산도 실행 불가.
+/// 토큰은 등록된 `requested_capabilities` 기반으로 생성됨.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SkillToken {
-    /// 토큰 고유 ID (UUID v4 권장)
+    /// 전역 고유 토큰 ID (UUID v4 권장)
     pub token_id: String,
-    /// 이 토큰이 허용하는 리소스 목록
+    /// 허용된 리소스 목록
     pub allowed_resources: Vec<ResourceType>,
-    /// 토큰 만료 시각 (None이면 세션 종료까지)
+    /// 만료 시각 (None = 세션 종료까지)
     pub expires_at: Option<SystemTime>,
 }
 
 impl SkillToken {
-    /// 주어진 리소스에 대한 접근 권한이 있는지 확인.
+    /// 특정 리소스에 대한 접근 권한이 있는지 확인.
     pub fn can_access(&self, resource: &ResourceType) -> bool {
         self.allowed_resources.contains(resource)
     }
+
+    /// 토큰이 만료됐는지 확인.
+    pub fn is_expired(&self) -> bool {
+        self.expires_at
+            .map(|exp| exp < SystemTime::now())
+            .unwrap_or(false)
+    }
 }
 
-/// HAL에 등록할 Skill의 메타데이터.
+/// Skill 등록 메타데이터.
 #[derive(Debug, Clone)]
 pub struct SkillManifest {
     /// Skill 고유 이름 (예: "music-player", "file-organizer")
     pub name: String,
-    /// Skill 버전 (SemVer)
+    /// SemVer 버전 문자열 (예: "0.1.0")
     pub version: String,
-    /// 이 Skill이 요청하는 리소스 접근 권한
+    /// 요청하는 리소스 접근 권한 목록
     pub requested_capabilities: Vec<ResourceType>,
-    /// Skill 설명 (사용자에게 표시됨)
+    /// 사용자에게 표시할 설명
     pub description: String,
 }
 
@@ -295,255 +381,249 @@ pub struct SkillManifest {
 //  섹션 5: Capability 토큰 (접근 제어)
 // ─────────────────────────────────────────────
 
-/// HAL 명령 실행 시 반드시 제시해야 하는 접근 권한 토큰.
-/// 모든 `AiHalInterface::execute_command()` 호출에 필수.
+/// HAL 명령 실행 시 필수로 제시해야 하는 접근 제어 토큰.
+///
+/// capability-based security 모델 구현.
+/// 참조: Saltzer & Schroeder (1975), "The Protection of Information in Computer Systems"
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityToken {
-    /// 토큰 소유 Skill의 이름
+    /// 토큰 소유 Skill 이름
     pub skill_name: String,
     /// 허용된 리소스 목록
     pub permissions: Vec<ResourceType>,
 }
 
 impl CapabilityToken {
-    /// 지정 리소스에 대한 권한이 있는지 확인.
+    /// 새 CapabilityToken 생성.
+    pub fn new(permissions: Vec<ResourceType>, skill_name: &str) -> Self {
+        Self { skill_name: skill_name.to_string(), permissions }
+    }
+
+    /// 특정 리소스에 대한 권한이 있는지 확인.
     pub fn has_permission(&self, resource: &ResourceType) -> bool {
         self.permissions.contains(resource)
+    }
+
+    /// `has_permission`의 간결한 별칭 (integration test / AI Core 친화적).
+    pub fn allows(&self, resource: &ResourceType) -> bool {
+        self.has_permission(resource)
     }
 }
 
 // ─────────────────────────────────────────────
-//  섹션 6: 감사 로그 (Audit Log)
+//  섹션 6: 감사 로그 타입
 // ─────────────────────────────────────────────
 
 /// 모든 HAL 연산에 자동 생성되는 감사 엔트리.
-/// 보안 감사 및 디버깅에 사용.
+///
+/// 성공/실패 여부와 무관하게 항상 기록됨.
+/// SECURITY: 감사 로그는 절대 삭제 불가해야 함 (append-only).
 #[derive(Debug, Clone)]
 pub struct AuditEntry {
-    /// 명령 실행 시각
+    /// 연산 실행 시각
     pub timestamp: SystemTime,
-    /// 요청한 Skill 이름
+    /// 요청 Skill 이름
     pub requestor: String,
-    /// 실행된 명령 종류 (Debug 문자열)
+    /// 실행된 명령 종류 (enum 변형 이름)
     pub command_kind: String,
     /// 성공 여부
     pub succeeded: bool,
+    /// 실패 이유 (실패한 경우만)
+    pub failure_reason: Option<String>,
 }
 
-// ─────────────────────────────────────────────
-//  섹션 7: 에러 타입
-// ─────────────────────────────────────────────
+impl AuditEntry {
+    /// 성공 감사 엔트리 생성 헬퍼.
+    pub fn success(requestor: &str, command_kind: &str) -> Self {
+        Self {
+            timestamp: SystemTime::now(),
+            requestor: requestor.to_string(),
+            command_kind: command_kind.to_string(),
+            succeeded: true,
+            failure_reason: None,
+        }
+    }
 
-/// HAL 연산 실패 이유.
-///
-/// 각 변형은 AI Core가 재시도 여부를 판단하는 데 사용.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HalError {
-    /// 유효하지 않은 capability 토큰 (권한 없음)
-    PermissionDenied {
-        /// 요청된 리소스
-        resource: ResourceType,
-        /// 거부 이유 설명
-        reason: String,
-    },
-
-    /// 요청한 리소스가 현재 사용 불가 (일시적)
-    ResourceUnavailable {
-        resource: ResourceType,
-    },
-
-    /// 요청한 리소스가 현재 시스템에 존재하지 않음 (영구적)
-    ResourceNotFound {
-        resource: ResourceType,
-    },
-
-    /// 메모리 부족으로 할당 실패
-    OutOfMemory {
-        /// 요청한 크기 (바이트)
-        requested_bytes: usize,
-    },
-
-    /// 스토리지 경로 접근 실패
-    StoragePathError {
-        path: std::path::PathBuf,
-        /// OS 에러 메시지
-        os_error: String,
-    },
-
-    /// 유효하지 않은 명령 파라미터
-    InvalidParameter {
-        /// 잘못된 파라미터 이름
-        param_name: String,
-        /// 에러 설명
-        message: String,
-    },
-
-    /// HAL 내부 오류 (버그)
-    InternalError(String),
-}
-
-impl fmt::Display for HalError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PermissionDenied { resource, reason } => {
-                write!(f, "권한 거부: {} — {}", resource, reason)
-            }
-            Self::ResourceUnavailable { resource } => {
-                write!(f, "리소스 사용 불가 (일시적): {}", resource)
-            }
-            Self::ResourceNotFound { resource } => {
-                write!(f, "리소스 없음: {}", resource)
-            }
-            Self::OutOfMemory { requested_bytes } => {
-                write!(f, "메모리 부족: {}바이트 요청", requested_bytes)
-            }
-            Self::StoragePathError { path, os_error } => {
-                write!(f, "스토리지 경로 오류 ({:?}): {}", path, os_error)
-            }
-            Self::InvalidParameter { param_name, message } => {
-                write!(f, "잘못된 파라미터 '{}': {}", param_name, message)
-            }
-            Self::InternalError(msg) => {
-                write!(f, "HAL 내부 오류: {}", msg)
-            }
+    /// 실패 감사 엔트리 생성 헬퍼.
+    pub fn failure(requestor: &str, command_kind: &str, reason: &str) -> Self {
+        Self {
+            timestamp: SystemTime::now(),
+            requestor: requestor.to_string(),
+            command_kind: command_kind.to_string(),
+            succeeded: false,
+            failure_reason: Some(reason.to_string()),
         }
     }
 }
 
-impl std::error::Error for HalError {}
-
 // ─────────────────────────────────────────────
-//  섹션 8: 핵심 HAL 트레이트 (인터페이스 명세)
+//  섹션 7: 핵심 HAL 트레이트
 // ─────────────────────────────────────────────
 
-/// AI-OS Hardware Abstraction Layer 핵심 인터페이스.
+/// AI-OS Hardware Abstraction Layer 핵심 인터페이스 트레이트.
 ///
-/// ## 설계 원칙
-/// 1. **모든 연산은 `CapabilityToken`을 요구** — 토큰 없이는 실행 불가
-/// 2. **모든 연산은 `AuditEntry`를 생성** — HAL 연산의 완전한 감사 추적
-/// 3. **구현체는 플랫폼별로 분리** — Linux, QEMU, Mock 각각 구현
+/// ## 불변 조건 (Invariants)
+/// 1. **모든 연산은 `CapabilityToken`을 요구** — 토큰 없이 실행 불가
+/// 2. **모든 연산은 `AuditEntry`를 생성** — 보안 감사 추적 보장
+/// 3. **Send + Sync** — 멀티스레드 Skill 런타임에서 공유 가능
+///
+/// ## 구현 목록
+/// - `LinuxHal` (M0): 실제 Linux 커널 브리지
+/// - `MockHal` (테스트): 하드웨어 없이 동작하는 테스트용 구현
 ///
 /// ## 구현 예시
-/// ```rust
-/// struct MockHal;
-///
-/// impl AiHalInterface for MockHal {
-///     fn execute_command(
-///         &self,
-///         token: &CapabilityToken,
-///         command: HalCommand,
-///     ) -> HalResult {
-///         // 테스트용 mock 구현
+/// ```rust,ignore
+/// struct MyHal;
+/// impl AiHalInterface for MyHal {
+///     fn execute_command(&self, token: &CapabilityToken, cmd: HalCommand) -> HalResult {
+///         // 구현
 ///         todo!()
 ///     }
-///
-///     fn query_state(
-///         &self,
-///         token: &CapabilityToken,
-///         resource: ResourceType,
-///     ) -> HalResult {
-///         todo!()
+///     fn query_state(&self, token: &CapabilityToken, resource: ResourceType) -> HalResult {
+///         self.execute_command(token, HalCommand::QueryState { resource, detailed: false })
 ///     }
-///
 ///     fn register_skill(&self, manifest: SkillManifest) -> Result<SkillToken, HalError> {
+///         // 구현
 ///         todo!()
 ///     }
+///     fn hal_name(&self) -> &str { "MyHal" }
+///     fn supported_resources(&self) -> Vec<ResourceType> { vec![] }
 /// }
 /// ```
 pub trait AiHalInterface: Send + Sync {
     /// HAL 명령을 실행하고 결과와 감사 엔트리를 반환.
     ///
     /// # 인자
-    /// - `token`: 실행 권한을 증명하는 capability 토큰
+    /// - `token`: capability 토큰 (권한 증명)
     /// - `command`: 실행할 HAL 명령
     ///
     /// # 반환
-    /// - `HalResult`: 실행 결과 + 감사 엔트리 (항상 반환, 실패해도 감사는 기록됨)
+    /// `HalResult`: 항상 반환됨 (실패해도 audit은 기록됨)
     fn execute_command(&self, token: &CapabilityToken, command: HalCommand) -> HalResult;
 
-    /// 리소스 현재 상태를 조회 (read-only, 부수효과 없음).
+    /// 리소스 상태를 조회 (read-only, 부수효과 없음).
     ///
-    /// `execute_command(HalCommand::QueryState)` 의 편의 래퍼.
+    /// `execute_command(HalCommand::QueryState { ... })` 의 편의 래퍼.
     fn query_state(&self, token: &CapabilityToken, resource: ResourceType) -> HalResult;
 
-    /// Skill을 HAL 런타임에 등록하고 capability 토큰 발급.
+    /// Skill을 HAL에 등록하고 capability 토큰 발급.
     ///
-    /// Skill은 실행 전에 반드시 등록되어야 함.
-    /// 토큰에는 `manifest.requested_capabilities` 기반 권한이 포함됨.
+    /// 등록 없이는 HAL 명령 실행 불가.
     fn register_skill(&self, manifest: SkillManifest) -> Result<SkillToken, HalError>;
 
-    /// 현재 HAL 구현의 이름을 반환 (디버깅용).
+    /// HAL 구현 이름 (디버깅/로깅용).
     fn hal_name(&self) -> &str;
 
-    /// 이 HAL 구현이 지원하는 리소스 목록 반환.
+    /// 이 HAL 구현이 지원하는 리소스 목록.
     fn supported_resources(&self) -> Vec<ResourceType>;
 }
 
 // ─────────────────────────────────────────────
-//  섹션 9: Mock HAL 구현 (테스트용)
+//  섹션 8: LinuxHal — 실제 Linux 구현체 (M0)
 // ─────────────────────────────────────────────
 
-/// 테스트 및 개발 환경용 Mock HAL 구현.
+/// Linux 커널을 직접 제어하는 HAL 구현체.
 ///
-/// 실제 하드웨어 없이 AI Core 로직을 테스트하기 위해 사용.
-/// 프로덕션 코드에서는 절대 사용 금지.
-#[cfg(any(test, feature = "mock"))]
-pub struct MockHal {
-    /// Mock이 반환할 메모리 총량 (기본값: 16GB)
-    pub mock_total_memory: u64,
+/// 내부적으로 `LinuxMemoryHal`, `LinuxCpuHal`, `LinuxStorageHal`을 조합.
+///
+/// ## 지원 syscall 브리지
+/// - 메모리: `/proc/meminfo` 읽기, `mmap`/`munmap`
+/// - CPU: `/proc/stat` 읽기, `sched_setaffinity`
+/// - 스토리지: `statfs`, `open`/`read`/`write`/`close`
+pub struct LinuxHal {
+    /// 메모리 HAL 서브시스템
+    pub memory: LinuxMemoryHal,
+    /// CPU HAL 서브시스템
+    pub cpu: LinuxCpuHal,
+    /// 스토리지 HAL 서브시스템
+    pub storage: LinuxStorageHal,
 }
 
-#[cfg(any(test, feature = "mock"))]
-impl Default for MockHal {
-    fn default() -> Self {
+impl LinuxHal {
+    /// 새 LinuxHal 인스턴스 생성.
+    pub fn new() -> Self {
         Self {
-            mock_total_memory: 16 * 1024 * 1024 * 1024, // 16GB
+            memory: LinuxMemoryHal::new(),
+            cpu: LinuxCpuHal::new(),
+            storage: LinuxStorageHal::new(),
         }
     }
 }
 
-#[cfg(any(test, feature = "mock"))]
-impl AiHalInterface for MockHal {
-    fn execute_command(&self, token: &CapabilityToken, command: HalCommand) -> HalResult {
-        // 명령 종류를 감사 로그용으로 기록
-        let command_kind = format!("{:?}", std::mem::discriminant(&command));
+impl Default for LinuxHal {
+    fn default() -> Self { Self::new() }
+}
 
-        // 권한 확인 (Mock에서도 권한 체크 수행)
-        let outcome = match &command {
-            HalCommand::QueryState { resource, .. } => {
-                if !token.has_permission(resource) {
-                    Err(HalError::PermissionDenied {
-                        resource: resource.clone(),
-                        reason: "Mock 권한 없음".to_string(),
-                    })
+impl AiHalInterface for LinuxHal {
+    fn execute_command(&self, token: &CapabilityToken, command: HalCommand) -> HalResult {
+        let cmd_kind = format!("{:?}", std::mem::discriminant(&command));
+
+        // 권한 확인 선행 (pre-flight check)
+        let resource = command_to_resource(&command);
+        if let Some(res) = &resource {
+            if !token.has_permission(res) {
+                return HalResult {
+                    audit: AuditEntry::failure(
+                        &token.skill_name,
+                        &cmd_kind,
+                        &format!("권한 없음: {}", res),
+                    ),
+                    outcome: Err(HalError::PermissionDenied {
+                        resource: res.clone(),
+                        reason: format!(
+                            "Skill '{}' 은 {} 리소스 접근 권한이 없습니다",
+                            token.skill_name, res
+                        ),
+                    }),
+                };
+            }
+        }
+
+        // 서브시스템에 위임
+        let outcome = match command {
+            HalCommand::QueryState { resource, .. } => match resource {
+                ResourceType::Memory => self.memory.query_state_inner(),
+                ResourceType::Cpu => self.cpu.query_state_inner(),
+                ResourceType::Storage => self.storage.query_state_inner(),
+                _ => Err(HalError::ResourceNotFound { resource }),
+            },
+            HalCommand::AllocateMemory { size_bytes, alignment, shared } => {
+                self.memory
+                    .allocate(size_bytes, alignment, shared)
+                    .map(HalResponse::MemoryAllocated)
+            }
+            HalCommand::FreeMemory { handle } => {
+                self.memory.free(handle).map(|_| HalResponse::Ok)
+            }
+            HalCommand::CpuSchedulingHint { pid, preferred_core, .. } => {
+                if let Some(core) = preferred_core {
+                    self.cpu.set_affinity(pid, core).map(|_| HalResponse::Ok)
                 } else {
-                    self.mock_query_state(resource)
+                    Ok(HalResponse::Ok) // 힌트 무시 (선호 코어 없음)
                 }
             }
-            HalCommand::AllocateMemory { size_bytes, .. } => {
-                if !token.has_permission(&ResourceType::Memory) {
-                    Err(HalError::PermissionDenied {
-                        resource: ResourceType::Memory,
-                        reason: "메모리 권한 없음".to_string(),
-                    })
-                } else if *size_bytes > self.mock_total_memory as usize {
-                    Err(HalError::OutOfMemory {
-                        requested_bytes: *size_bytes,
-                    })
-                } else {
-                    // Mock: 항상 핸들 ID 42 반환
-                    Ok(HalResponse::MemoryAllocated(MemoryHandle::new(42)))
-                }
+            HalCommand::OpenStorageRead { path } => {
+                self.storage.open_read(&path).map(HalResponse::StorageHandle)
             }
-            _ => Ok(HalResponse::Ok),
+            HalCommand::OpenStorageWrite { path, create_if_missing } => {
+                self.storage
+                    .open_write(&path, create_if_missing)
+                    .map(HalResponse::StorageHandle)
+            }
+            HalCommand::RegisterSkill { manifest } => {
+                self.register_skill(manifest).map(HalResponse::SkillRegistered)
+            }
         };
 
         HalResult {
-            audit: AuditEntry {
-                timestamp: SystemTime::now(),
-                requestor: token.skill_name.clone(),
-                command_kind,
-                succeeded: outcome.is_ok(),
+            audit: if outcome.is_ok() {
+                AuditEntry::success(&token.skill_name, &cmd_kind)
+            } else {
+                AuditEntry::failure(
+                    &token.skill_name,
+                    &cmd_kind,
+                    &outcome.as_ref().unwrap_err().to_string(),
+                )
             },
             outcome,
         }
@@ -552,25 +632,144 @@ impl AiHalInterface for MockHal {
     fn query_state(&self, token: &CapabilityToken, resource: ResourceType) -> HalResult {
         self.execute_command(
             token,
-            HalCommand::QueryState {
-                resource,
-                detailed: false,
-            },
+            HalCommand::QueryState { resource, detailed: false },
         )
     }
 
     fn register_skill(&self, manifest: SkillManifest) -> Result<SkillToken, HalError> {
-        // Mock: 요청한 모든 권한을 그대로 부여 (프로덕션에서는 불가)
+        // M0: 요청 권한을 그대로 부여 (M1에서 심사 로직 추가 예정)
         Ok(SkillToken {
-            token_id: format!("mock-token-{}", manifest.name),
+            token_id: format!(
+                "linux-{}-{}-{}",
+                manifest.name,
+                manifest.version,
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            ),
             allowed_resources: manifest.requested_capabilities,
             expires_at: None,
         })
     }
 
-    fn hal_name(&self) -> &str {
-        "MockHal (테스트 전용)"
+    fn hal_name(&self) -> &str { "LinuxHal" }
+
+    fn supported_resources(&self) -> Vec<ResourceType> {
+        vec![ResourceType::Memory, ResourceType::Cpu, ResourceType::Storage]
     }
+}
+
+/// HalCommand에서 주 리소스 타입을 추출하는 헬퍼.
+fn command_to_resource(cmd: &HalCommand) -> Option<ResourceType> {
+    match cmd {
+        HalCommand::QueryState { resource, .. } => Some(resource.clone()),
+        HalCommand::AllocateMemory { .. } | HalCommand::FreeMemory { .. } => {
+            Some(ResourceType::Memory)
+        }
+        HalCommand::CpuSchedulingHint { .. } => Some(ResourceType::Cpu),
+        HalCommand::OpenStorageRead { .. } | HalCommand::OpenStorageWrite { .. } => {
+            Some(ResourceType::Storage)
+        }
+        HalCommand::RegisterSkill { .. } => None,
+    }
+}
+
+// ─────────────────────────────────────────────
+//  섹션 9: MockHal — 테스트 전용 구현
+// ─────────────────────────────────────────────
+
+/// 하드웨어 없이 동작하는 테스트 전용 Mock HAL.
+///
+/// `#[cfg(any(test, feature = "mock"))]` 조건부 컴파일.
+/// 프로덕션 코드에서 절대 사용 금지.
+#[cfg(any(test, feature = "mock"))]
+pub struct MockHal {
+    /// Mock 시스템 총 메모리 (바이트, 기본 16GB)
+    pub mock_total_memory: u64,
+    /// Mock CPU 코어 수 (기본 8)
+    pub mock_cpu_cores: usize,
+    /// Mock 스토리지 총 용량 (바이트, 기본 512GB)
+    pub mock_total_storage: u64,
+}
+
+#[cfg(any(test, feature = "mock"))]
+impl Default for MockHal {
+    fn default() -> Self {
+        Self {
+            mock_total_memory:  16 * 1024 * 1024 * 1024, // 16 GiB
+            mock_cpu_cores: 8,
+            mock_total_storage: 512 * 1024 * 1024 * 1024, // 512 GiB
+        }
+    }
+}
+
+#[cfg(any(test, feature = "mock"))]
+impl AiHalInterface for MockHal {
+    fn execute_command(&self, token: &CapabilityToken, command: HalCommand) -> HalResult {
+        let cmd_kind = format!("{:?}", std::mem::discriminant(&command));
+
+        let resource = command_to_resource(&command);
+        if let Some(res) = &resource {
+            if !token.has_permission(res) {
+                return HalResult {
+                    audit: AuditEntry::failure(&token.skill_name, &cmd_kind, "권한 없음"),
+                    outcome: Err(HalError::PermissionDenied {
+                        resource: res.clone(),
+                        reason: "Mock 권한 없음".to_string(),
+                    }),
+                };
+            }
+        }
+
+        let outcome: Result<HalResponse, HalError> = match command {
+            HalCommand::QueryState { resource, .. } => self.mock_query(&resource),
+            HalCommand::AllocateMemory { size_bytes, .. } => {
+                if size_bytes as u64 > self.mock_total_memory {
+                    Err(HalError::OutOfMemory {
+                        requested_bytes: size_bytes,
+                        available_bytes: Some(self.mock_total_memory as usize / 2),
+                    })
+                } else {
+                    Ok(HalResponse::MemoryAllocated(MemoryHandle::new(0xDEAD_BEEF)))
+                }
+            }
+            HalCommand::FreeMemory { .. }
+            | HalCommand::CpuSchedulingHint { .. }
+            | HalCommand::OpenStorageRead { .. }
+            | HalCommand::OpenStorageWrite { .. } => Ok(HalResponse::Ok),
+            HalCommand::RegisterSkill { manifest } => {
+                self.register_skill(manifest).map(HalResponse::SkillRegistered)
+            }
+        };
+
+        HalResult {
+            audit: if outcome.is_ok() {
+                AuditEntry::success(&token.skill_name, &cmd_kind)
+            } else {
+                AuditEntry::failure(
+                    &token.skill_name,
+                    &cmd_kind,
+                    &outcome.as_ref().unwrap_err().to_string(),
+                )
+            },
+            outcome,
+        }
+    }
+
+    fn query_state(&self, token: &CapabilityToken, resource: ResourceType) -> HalResult {
+        self.execute_command(token, HalCommand::QueryState { resource, detailed: false })
+    }
+
+    fn register_skill(&self, manifest: SkillManifest) -> Result<SkillToken, HalError> {
+        Ok(SkillToken {
+            token_id: format!("mock-{}", manifest.name),
+            allowed_resources: manifest.requested_capabilities,
+            expires_at: None,
+        })
+    }
+
+    fn hal_name(&self) -> &str { "MockHal (테스트 전용)" }
 
     fn supported_resources(&self) -> Vec<ResourceType> {
         vec![ResourceType::Memory, ResourceType::Cpu, ResourceType::Storage]
@@ -579,249 +778,175 @@ impl AiHalInterface for MockHal {
 
 #[cfg(any(test, feature = "mock"))]
 impl MockHal {
-    /// Mock 상태 조회 내부 구현.
-    fn mock_query_state(&self, resource: &ResourceType) -> Result<HalResponse, HalError> {
+    /// 새 MockHal 인스턴스 생성 (기본값 사용).
+    pub fn new() -> Self { Self::default() }
+
+    /// Mock 리소스 상태 조회 내부 구현.
+    fn mock_query(&self, resource: &ResourceType) -> Result<HalResponse, HalError> {
         match resource {
             ResourceType::Memory => Ok(HalResponse::ResourceState(ResourceState::Memory(
                 MemoryState {
-                    total_bytes: self.mock_total_memory,
-                    used_bytes: self.mock_total_memory / 2, // 50% 사용 중으로 가정
-                    free_bytes: self.mock_total_memory / 2,
+                    total_bytes:     self.mock_total_memory,
+                    used_bytes:      self.mock_total_memory / 2,
+                    available_bytes: self.mock_total_memory / 2,
+                    buffers_bytes:   256 * 1024 * 1024,
+                    cached_bytes:    1024 * 1024 * 1024,
                     page_size: 4096,
                 },
             ))),
             ResourceType::Cpu => Ok(HalResponse::ResourceState(ResourceState::Cpu(CpuState {
-                logical_cores: 8,
-                per_core_usage: vec![0.1, 0.2, 0.05, 0.15, 0.3, 0.1, 0.0, 0.25],
+                logical_cores: self.mock_cpu_cores,
+                per_core_usage: vec![0.10, 0.20, 0.05, 0.15, 0.30, 0.10, 0.00, 0.25]
+                    .into_iter()
+                    .take(self.mock_cpu_cores)
+                    .collect(),
+                total_usage: 0.144,
                 frequency_mhz: 3_600,
+                model_name: "Mock CPU (테스트용)".to_string(),
             }))),
-            ResourceType::Storage => {
-                Ok(HalResponse::ResourceState(ResourceState::Storage(StorageState {
-                    total_bytes: 512 * 1024 * 1024 * 1024, // 512GB
-                    used_bytes: 200 * 1024 * 1024 * 1024,  // 200GB
+            ResourceType::Storage => Ok(HalResponse::ResourceState(ResourceState::Storage(
+                StorageState {
+                    total_bytes:     self.mock_total_storage,
+                    used_bytes:      self.mock_total_storage * 2 / 5,
+                    available_bytes: self.mock_total_storage * 3 / 5,
+                    block_size:      4096,
                     mount_point: std::path::PathBuf::from("/"),
-                })))
-            }
-            _ => Err(HalError::ResourceNotFound {
-                resource: resource.clone(),
-            }),
+                    fs_type: "mock_fs".to_string(),
+                },
+            ))),
+            _ => Err(HalError::ResourceNotFound { resource: resource.clone() }),
         }
     }
 }
 
 // ─────────────────────────────────────────────
-//  섹션 10: 단위 테스트
+//  단위 테스트 (lib.rs 레벨)
 // ─────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// 테스트용 CapabilityToken 생성 헬퍼.
-    fn make_token(permissions: Vec<ResourceType>) -> CapabilityToken {
-        CapabilityToken {
-            skill_name: "test-skill".to_string(),
-            permissions,
-        }
-    }
-
-    // ── MockHal 기본 동작 테스트 ──
-
-    #[test]
-    fn test_mock_hal_name() {
-        // MockHal이 올바른 이름을 반환하는지 확인
-        let hal = MockHal::default();
-        assert!(hal.hal_name().contains("Mock"));
+    fn make_token(perms: Vec<ResourceType>) -> CapabilityToken {
+        CapabilityToken { skill_name: "test-skill".to_string(), permissions: perms }
     }
 
     #[test]
-    fn test_register_skill_returns_token() {
-        // Skill 등록 후 토큰이 정상 발급되는지 확인
+    fn test_mock_register_and_query_memory() {
+        // 등록 → 토큰 발급 → 메모리 조회 전체 흐름 검증
         let hal = MockHal::default();
         let manifest = SkillManifest {
-            name: "music-player".to_string(),
+            name: "test-skill".to_string(),
             version: "0.1.0".to_string(),
-            requested_capabilities: vec![ResourceType::Audio, ResourceType::Storage],
-            description: "음악 재생 Skill".to_string(),
+            requested_capabilities: vec![ResourceType::Memory],
+            description: "테스트".to_string(),
+        };
+        let token_result = hal.register_skill(manifest);
+        assert!(token_result.is_ok());
+
+        let skill_token = token_result.unwrap();
+        let cap_token = CapabilityToken {
+            skill_name: "test-skill".to_string(),
+            permissions: skill_token.allowed_resources.clone(),
         };
 
-        let result = hal.register_skill(manifest);
-        assert!(result.is_ok());
-
-        let token = result.unwrap();
-        assert_eq!(token.token_id, "mock-token-music-player");
-        assert!(token.can_access(&ResourceType::Audio));
-        assert!(token.can_access(&ResourceType::Storage));
-        assert!(!token.can_access(&ResourceType::Cpu)); // 요청하지 않은 권한
-    }
-
-    // ── 메모리 쿼리 테스트 ──
-
-    #[test]
-    fn test_query_memory_state_with_permission() {
-        // 메모리 권한이 있을 때 조회 성공하는지 확인
-        let hal = MockHal::default();
-        let token = make_token(vec![ResourceType::Memory]);
-
-        let result = hal.query_state(&token, ResourceType::Memory);
-        assert!(result.outcome.is_ok());
-
-        if let Ok(HalResponse::ResourceState(ResourceState::Memory(mem))) = result.outcome {
-            assert_eq!(mem.total_bytes, 16 * 1024 * 1024 * 1024);
-            assert!(mem.usage_ratio() > 0.0 && mem.usage_ratio() <= 1.0);
-        } else {
-            panic!("예상과 다른 응답 타입");
-        }
-    }
-
-    #[test]
-    fn test_query_memory_state_without_permission() {
-        // 메모리 권한 없이 조회 시 PermissionDenied 반환 확인
-        let hal = MockHal::default();
-        let token = make_token(vec![ResourceType::Cpu]); // 메모리 권한 없음
-
-        let result = hal.query_state(&token, ResourceType::Memory);
-        assert!(result.outcome.is_err());
-
-        // 감사 로그에도 실패가 기록되어야 함
-        assert!(!result.audit.succeeded);
-
-        if let Err(HalError::PermissionDenied { resource, .. }) = result.outcome {
-            assert_eq!(resource, ResourceType::Memory);
-        } else {
-            panic!("PermissionDenied 에러가 아님");
-        }
-    }
-
-    // ── 메모리 할당 테스트 ──
-
-    #[test]
-    fn test_allocate_memory_success() {
-        // 메모리 할당이 정상 동작하는지 확인
-        let hal = MockHal::default();
-        let token = make_token(vec![ResourceType::Memory]);
-
-        let result = hal.execute_command(
-            &token,
-            HalCommand::AllocateMemory {
-                size_bytes: 1024 * 1024, // 1MB
-                alignment: 4096,
-                shared: false,
-            },
-        );
-
+        let result = hal.query_state(&cap_token, ResourceType::Memory);
         assert!(result.outcome.is_ok());
         assert!(result.audit.succeeded);
-        if let Ok(HalResponse::MemoryAllocated(handle)) = result.outcome {
-            assert_eq!(handle.raw_id(), 42); // Mock은 항상 42 반환
-        }
     }
 
     #[test]
-    fn test_allocate_memory_out_of_memory() {
-        // 시스템 메모리를 초과하는 할당 요청 시 OOM 에러 확인
+    fn test_mock_permission_denied_returns_audit() {
+        // 권한 없을 때도 audit 엔트리가 생성되는지 확인
+        let hal = MockHal::default();
+        let token = make_token(vec![]); // 권한 없음
+        let result = hal.query_state(&token, ResourceType::Memory);
+
+        assert!(result.outcome.is_err());
+        assert!(!result.audit.succeeded);
+        assert!(result.audit.failure_reason.is_some());
+    }
+
+    #[test]
+    fn test_mock_oom_with_available_bytes() {
+        // OutOfMemory 에러에 available_bytes가 포함되는지 확인
         let hal = MockHal {
-            mock_total_memory: 1024, // 1KB만 있는 Mock
+            mock_total_memory: 1024, // 1KiB만 있는 환경
+            ..Default::default()
         };
         let token = make_token(vec![ResourceType::Memory]);
-
         let result = hal.execute_command(
             &token,
-            HalCommand::AllocateMemory {
-                size_bytes: 1024 * 1024 * 1024, // 1GB 요청 (불가능)
-                alignment: 4096,
-                shared: false,
-            },
+            HalCommand::AllocateMemory { size_bytes: 1024 * 1024, alignment: 4096, shared: false },
         );
-
         assert!(matches!(
             result.outcome,
-            Err(HalError::OutOfMemory { .. })
+            Err(HalError::OutOfMemory { available_bytes: Some(_), .. })
         ));
     }
 
-    // ── CPU 상태 조회 테스트 ──
-
     #[test]
-    fn test_query_cpu_state() {
-        // CPU 상태 조회가 정상 동작하는지 확인
-        let hal = MockHal::default();
-        let token = make_token(vec![ResourceType::Cpu]);
-
-        let result = hal.query_state(&token, ResourceType::Cpu);
-        assert!(result.outcome.is_ok());
-
-        if let Ok(HalResponse::ResourceState(ResourceState::Cpu(cpu))) = result.outcome {
-            assert_eq!(cpu.logical_cores, 8);
-            assert_eq!(cpu.per_core_usage.len(), 8);
-            // 모든 코어 사용률은 0.0 ~ 1.0 범위여야 함
-            for usage in &cpu.per_core_usage {
-                assert!(*usage >= 0.0 && *usage <= 1.0);
-            }
-        } else {
-            panic!("CPU 상태 응답 타입 불일치");
-        }
-    }
-
-    // ── 감사 로그 테스트 ──
-
-    #[test]
-    fn test_audit_entry_is_always_created() {
-        // 성공/실패 모두 감사 엔트리가 생성되는지 확인
-        let hal = MockHal::default();
-
-        // 성공 케이스
-        let token_ok = make_token(vec![ResourceType::Memory]);
-        let result_ok = hal.query_state(&token_ok, ResourceType::Memory);
-        assert_eq!(result_ok.audit.requestor, "test-skill");
-        assert!(result_ok.audit.succeeded);
-
-        // 실패 케이스
-        let token_fail = make_token(vec![]);
-        let result_fail = hal.query_state(&token_fail, ResourceType::Memory);
-        assert_eq!(result_fail.audit.requestor, "test-skill");
-        assert!(!result_fail.audit.succeeded);
-    }
-
-    // ── 에러 메시지 출력 테스트 ──
-
-    #[test]
-    fn test_hal_error_display() {
-        // 에러 메시지가 한국어로 출력되는지 확인
-        let err = HalError::OutOfMemory {
-            requested_bytes: 1024,
+    fn test_skill_token_expiry() {
+        // 만료되지 않은 토큰 확인
+        let token = SkillToken {
+            token_id: "test".to_string(),
+            allowed_resources: vec![ResourceType::Memory],
+            expires_at: None,
         };
-        let msg = format!("{}", err);
-        assert!(msg.contains("메모리 부족"));
-        assert!(msg.contains("1024"));
+        assert!(!token.is_expired());
+        assert!(token.can_access(&ResourceType::Memory));
+        assert!(!token.can_access(&ResourceType::Cpu));
     }
 
-    // ── CapabilityToken 권한 확인 테스트 ──
+    #[test]
+    fn test_audit_entry_helpers() {
+        // AuditEntry 헬퍼 메서드 검증
+        let ok = AuditEntry::success("skill-a", "QueryState");
+        assert!(ok.succeeded);
+        assert!(ok.failure_reason.is_none());
+
+        let fail = AuditEntry::failure("skill-b", "AllocateMemory", "OOM");
+        assert!(!fail.succeeded);
+        assert_eq!(fail.failure_reason.as_deref(), Some("OOM"));
+    }
 
     #[test]
-    fn test_capability_token_permission_check() {
-        // 토큰 권한 확인 로직 테스트
-        let token = CapabilityToken {
-            skill_name: "test".to_string(),
-            permissions: vec![ResourceType::Memory, ResourceType::Storage],
+    fn test_memory_state_usage_ratio() {
+        let mem = MemoryState {
+            total_bytes: 16_000,
+            used_bytes: 8_000,
+            available_bytes: 8_000,
+            buffers_bytes: 0,
+            cached_bytes: 0,
+            page_size: 4096,
         };
-
-        assert!(token.has_permission(&ResourceType::Memory));
-        assert!(token.has_permission(&ResourceType::Storage));
-        assert!(!token.has_permission(&ResourceType::Cpu));
-        assert!(!token.has_permission(&ResourceType::Network));
+        let ratio = mem.usage_ratio();
+        assert!((ratio - 0.5).abs() < 1e-9, "예상 0.5, 실제 {}", ratio);
     }
 
-    // ── 지원 리소스 목록 테스트 ──
+    #[test]
+    fn test_storage_state_usage_ratio() {
+        let s = StorageState {
+            total_bytes: 100,
+            used_bytes: 40,
+            available_bytes: 60,
+            mount_point: std::path::PathBuf::from("/"),
+            fs_type: "ext4".to_string(),
+        };
+        let ratio = s.usage_ratio();
+        assert!((ratio - 0.4).abs() < 1e-9);
+    }
 
     #[test]
-    fn test_supported_resources() {
-        // MockHal이 M0 지원 리소스를 올바르게 반환하는지 확인
-        let hal = MockHal::default();
-        let resources = hal.supported_resources();
+    fn test_linux_hal_name() {
+        // LinuxHal이 올바른 이름 반환하는지 확인
+        let hal = LinuxHal::new();
+        assert_eq!(hal.hal_name(), "LinuxHal");
+    }
 
-        assert!(resources.contains(&ResourceType::Memory));
-        assert!(resources.contains(&ResourceType::Cpu));
-        assert!(resources.contains(&ResourceType::Storage));
+    #[test]
+    fn test_mock_hal_name() {
+        let hal = MockHal::default();
+        assert!(hal.hal_name().contains("Mock"));
     }
 }

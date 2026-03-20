@@ -20,6 +20,10 @@ default = []
 mock = []
 
 [dependencies]
+# Linux syscall 바인딩 (mmap, munmap, statfs, sched_setaffinity 등)
+# 참조: https://docs.rs/libc
+libc = "0.2"
+
 # 직렬화/역직렬화: ai-core-bridge와 통신용 (M1에서 활성화)
 # serde = { version = "1", features = ["derive"] }
 
