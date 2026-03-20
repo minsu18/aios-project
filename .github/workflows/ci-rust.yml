@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2025 minsu18 <https://github.com/minsu18>
+# Project : AI-OS — https://github.com/minsu18/aios-project
+#
+# HAL Rust 크레이트 CI 워크플로우
+# 트리거: main/develop 브랜치 push 또는 PR
+
+name: CI — Rust HAL
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # MSRV (Minimum Supported Rust Version)
+  RUST_VERSION: "1.75"
+
+jobs:
+  # ── 빌드 및 테스트 ──
+  build-and-test:
+    name: Build & Test (Rust ${{ matrix.rust }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        rust: ["1.75", "stable"]  # MSRV + latest stable
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Rust 툴체인 설치
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+
+      - name: Cargo 캐시 복원
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+
+      - name: 빌드 (ai-hal)
+        run: cargo build -p ai-hal --verbose
+
+      - name: 빌드 (mock feature 포함)
+        run: cargo build -p ai-hal --features mock --verbose
+
+      - name: 단위 테스트 실행
+        run: cargo test -p ai-hal --features mock -- --nocapture
+
+      - name: Clippy 린트 검사
+        run: cargo clippy -p ai-hal --features mock -- -D warnings
+
+      - name: 코드 포맷 검사
+        run: cargo fmt -p ai-hal --check
+
+  # ── 보안 취약점 감사 ──
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-audit 설치 및 실행
+        uses: rustsec/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

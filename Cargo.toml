@@ -1,19 +1,37 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2025 minsu18 <https://github.com/minsu18>
+# Project : AI-OS — https://github.com/minsu18/aios-project
+#
+# Cargo 워크스페이스 루트 — 모든 Rust 크레이트를 단일 빌드 그래프로 관리
+
 [workspace]
-resolver = "2"
+resolver = "2"  # 피처 플래그 버전 2 리졸버 사용
 members = [
-    "kernel",
-    "kernel-rpi",
-    "hal",
-    "hal-bare",
-    "driver-bridge",
-    "ai-core",
-    "boot",
-    "drivers",
+    # ── M0: HAL 인터페이스 정의 ──
+    "crates/ai-hal",
+
+    # ── M1에서 활성화 ──
+    # "crates/ai-core-bridge",
+
+    # ── M2에서 활성화 ──
+    # "crates/skill-runtime",
 ]
 
+# 워크스페이스 공통 패키지 메타데이터
+[workspace.package]
+authors = ["minsu18 <https://github.com/minsu18>"]
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/minsu18/aios-project"
+edition = "2021"
+rust-version = "1.75"  # MSRV
+
 [profile.dev]
-panic = "abort"
+opt-level = 0
+debug = true
 
 [profile.release]
+opt-level = 3
 panic = "abort"
 lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2025 minsu18 <https://github.com/minsu18>
+# Project : AI-OS — https://github.com/minsu18/aios-project
+
+[package]
+name = "ai-hal"
+version = "0.1.0"
+edition = "2021"
+authors = ["minsu18 <https://github.com/minsu18>"]
+description = "AI-OS Hardware Abstraction Layer — AI Core의 하드웨어 직접 제어 인터페이스"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/minsu18/aios-project"
+keywords = ["os", "hal", "ai", "hardware-abstraction"]
+categories = ["os", "hardware-support"]
+rust-version = "1.75"  # MSRV: Rust 1.75 이상 필요
+
+[features]
+# mock 피처: 테스트 및 개발 환경에서 MockHal 사용 가능
+default = []
+mock = []
+
+[dependencies]
+# 직렬화/역직렬화: ai-core-bridge와 통신용 (M1에서 활성화)
+# serde = { version = "1", features = ["derive"] }
+
+# 에러 처리 편의 라이브러리 (M1에서 활성화)
+# thiserror = "1"
+
+[dev-dependencies]
+# 테스트에서 mock 피처 자동 활성화
+
+[[test]]
+name = "hal_integration"
+path = "tests/hal_integration.rs"
+required-features = ["mock"]

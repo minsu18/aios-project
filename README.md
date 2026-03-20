@@ -1,120 +1,179 @@
-# AIOS — AI-Native Operating System
+# AI-OS — AI-Native Operating System
 
-> An operating system that runs **only with AI**. No traditional apps — AI directly controls all device functions.
+> **"앱이 없는 OS — AI가 곧 OS다"**
+> An operating system where AI *is* the OS. No traditional app layer — AI Core directly controls all hardware via HAL.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Rust](https://img.shields.io/badge/HAL-Rust%201.75+-orange.svg)](https://www.rust-lang.org)
+[![Python](https://img.shields.io/badge/AI%20Core-Python%203.11+-blue.svg)](https://python.org)
+[![Status](https://img.shields.io/badge/Status-M0%20Development-yellow.svg)](https://github.com/minsu18/aios-project)
 
-> **Status**: Not yet validated on physical hardware. This project aims to align with the all-AI device development direction.
+> **현재 상태**: M0 개발 중 — HAL API trait 정의 및 기반 구조 확립 단계
 
-## Vision
+---
 
-AIOS is an **AI-only OS**: the system operates solely through AI, with no conventional app launcher or app-based workflows.
+## 비전 (Vision)
 
-- **AI-only interface**: All interactions go through AI (text, voice, photo, video)
-- **App Store**: A marketplace for adding diverse AI capabilities — browse, install, and manage skills that extend what the AI can do
-- **Hybrid compute**: Built-in on-device AI for basics; cloud for heavy tasks or external data
+AI-OS는 전통적인 앱 레이어를 **완전히 제거**한 AI 네이티브 운영체제입니다.
+
+기존 OS는 `사용자 → 앱 → OS API → 커널 → 하드웨어` 구조를 가집니다.
+AI-OS는 이 구조를 혁신하여 `사용자 의도 → AI Core → HAL → 하드웨어`로 단순화합니다.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  User: Text · Voice · Image · Video                      │
-└─────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────┐
-│  AI Core — Intent · Task Decomposition · Orchestration   │
-└─────────────────────────────────────────────────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│ On-Device    │    │  App Store   │    │  Cloud       │
-│ AI (basic)   │    │  (skills/    │    │  AI (heavy)  │
-│              │    │  AI add-ons) │    │              │
-└──────────────┘    └──────────────┘    └──────────────┘
-         │                    │                    │
-         └────────────────────┼────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────┐
-│  HAL (Hardware Abstraction Layer)                        │
-│  Memory · CPU · GPU · Comms · Camera · Speaker · Mic     │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│          User: 자연어 · 음성 · 이미지 · 제스처         │
+└───────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌───────────────────────────────────────────────────────┐
+│                    AI CORE                            │
+│   Intent Parser → Skill Orchestrator                  │
+│   온디바이스 (Phi-4-mini / Gemma-3)                   │
+│   클라우드   (Claude API)                             │
+└───────────────────────────────────────────────────────┘
+                          │  HAL Command
+                          ▼
+┌───────────────────────────────────────────────────────┐
+│         Hardware Abstraction Layer (Rust)             │
+│   Memory HAL │ CPU HAL │ Storage HAL │ GPU HAL …     │
+└───────────────────────────────────────────────────────┘
+                          │  syscall / eBPF
+                          ▼
+              Linux Kernel → Hardware
 ```
 
-## Project Structure
+---
+
+## 선행기술 대비 차별점
+
+| 선행기술 | 구조 | AI-OS 차이점 |
+|---------|------|------------|
+| Rutgers AIOS | 기존 OS 위에 LLM 올림 | OS 자체가 AI (레이어 역전) |
+| KernelAGI (2025) | 앱 레이어 유지 | 앱 레이어 **완전 제거** |
+| IBM US11379110 | 앱이 전제됨 | 앱 개념 자체 없음 |
+| Google AppFunctions | AI가 앱 함수 호출 | 앱 자체가 없음 |
+
+---
+
+## 프로젝트 구조
 
 ```
 aios-project/
-├── kernel/          # x86-64 microkernel (QEMU)
-├── kernel-rpi/      # Raspberry Pi 3/4 kernel (aarch64)
-├── hal/             # Hardware Abstraction Layer
-├── hal-bare/        # no_std HAL for bare-metal (kernel-rpi, timer, inference stub)
-├── driver-bridge/   # CLI bridge: camera/audio for prototype (Linux)
-├── ai-core/         # AI interface core
-├── skills/          # Skill runtime (App Store items = installable skills)
-├── drivers/         # Hardware drivers
-├── tools/           # Build · emulation tools
-└── docs/            # Design docs
+├── LICENSE                       # AGPL-3.0
+├── README.md
+├── CONTRIBUTING.md
+├── Makefile
+├── Cargo.toml                    # Rust workspace 루트
+├── .github/
+│   ├── workflows/
+│   │   ├── ci-rust.yml           # HAL Rust 빌드/테스트
+│   │   ├── ci-python.yml         # Intent Engine 테스트
+│   │   └── ci-ui.yml             # AI Shell UI 빌드
+│   └── ISSUE_TEMPLATE/
+├── crates/
+│   ├── ai-hal/                   # ⭐ HAL 직접 제어 레이어 (M0 핵심)
+│   ├── ai-core-bridge/           # AI Core ↔ HAL 브리지 (M1)
+│   └── skill-runtime/            # Skill 샌드박스 (M2)
+├── python/
+│   └── intent_engine/            # Intent 분석 → HAL 명령 생성
+│       ├── parser.py             # ⭐ IntentParser (M0 핵심)
+│       ├── hal_codegen.py        # (M1)
+│       └── inference_router.py   # (M1)
+├── ui/
+│   └── ai-shell/                 # AI Shell UI (M2)
+└── docs/
+    ├── architecture.md           # 전체 아키텍처
+    ├── hal-api.md                 # HAL API 레퍼런스
+    ├── getting-started.md
+    └── roadmap.md
 ```
 
-## Roadmap
+---
 
-| Phase | Goal |
-|-------|------|
-| **Phase 1** | AI core + skill runtime (host validation) |
-| **Phase 2** | HAL + minimal kernel (x86-64 / ARM) |
-| **Phase 3** | Bare-metal boot · drivers · multimodal I/O |
-| **Phase 4** | App Store — browse, install, manage AI add-ons |
+## 마일스톤 (Roadmap)
 
-## Development
+| 마일스톤 | 기간 | 목표 |
+|---------|------|------|
+| **M0** ← 현재 | 1~2개월 | 레포 구조, HAL trait 정의, CI/CD |
+| **M1** | 3~6개월 | Memory/CPU/Storage HAL 구현, AI Core 프로토타입 |
+| **M2** | 6~12개월 | GPU/Camera/Audio HAL, Skill 런타임, AI Shell |
+| **M3** | 12개월~ | 안정화, Skill 마켓, 외부 기여자 온보딩 |
 
-- **Rust** (nightly): kernel, HAL, drivers
-- **Python/TypeScript**: AI core prototype (Phase 1)
+---
 
-## Getting Started
+## 기술 스택
+
+| 영역 | 기술 |
+|------|------|
+| HAL / Kernel | Rust (cargo workspace), eBPF |
+| AI Core | Python 3.11+, uv |
+| UI | TypeScript + React 18 + Tailwind CSS |
+| 빌드 | Makefile + GitHub Actions |
+| 테스트 환경 | QEMU + Linux 6.x |
+| 온디바이스 모델 | Phi-4-mini, Gemma-3 (llama.cpp / ONNX Runtime) |
+| 클라우드 모델 | Claude API (Anthropic) |
+
+---
+
+## 시작하기 (Getting Started)
+
+### 사전 요구사항
+
+- Rust 1.75+ (`rustup update stable`)
+- Python 3.11+ with [uv](https://github.com/astral-sh/uv)
+- QEMU 8.x (테스트 환경)
+
+### 설치 및 빌드
 
 ```bash
+# 레포 클론
 git clone https://github.com/minsu18/aios-project.git
 cd aios-project
 
-# Phase 1: AI core + skill runtime (host validation)
-cd prototype && npm install && npm run demo
+# HAL 크레이트 빌드 및 테스트 (M0)
+cargo test -p ai-hal --features mock
 
-# List loaded skills and MCP tools
-cd prototype && npm run skills
+# Python Intent Engine 실행 (M0)
+cd python
+uv pip install -e .
+python -m intent_engine.parser
 
-# Phase 2: Kernel + QEMU boot (requires Rust nightly, qemu-system-x86_64)
-cargo run -p aios-boot
-
-# VM simulation: boot with configurable specs, then run AI prototype
-./tools/simulate.sh --cpus 2 --memory 512
-# Or: cd prototype && npm run simulate
-# Without QEMU: npm run simulate:no-vm
-
-# Raspberry Pi: build and simulate (QEMU, no hardware needed)
-./tools/simulate-rpi.sh
-# Exit: Ctrl+A then X
-
-# Raspberry Pi: run with host Ollama for 'ask' (LLM via serial bridge)
-./tools/simulate-rpi-bridge.sh
-# Or: cd prototype && npm run simulate:rpi
-# Requires: ollama serve, ollama pull llama3.2
-
-# Raspberry Pi: build kernel8.img for physical SD card boot
-./tools/build-rpi.sh
-# Copy target/.../kernel8.img to SD card boot partition
-
-# Driver bridge (Linux): voice/image capture from hardware
-cargo build -p aios-driver-bridge --release
-
-# Rust crates (kernel, HAL, ai-core)
-cargo build
+# 전체 빌드
+cargo build --workspace
 ```
 
-> **Push to GitHub**: See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md)
+### 빠른 동작 확인
 
-## Contributing
+```bash
+# Intent 파서 동작 확인
+python python/intent_engine/parser.py
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+# HAL mock 테스트
+cargo test -p ai-hal --features mock -- --nocapture
+```
 
-## License
+---
 
-MIT License — [LICENSE](LICENSE)
+## 기여하기 (Contributing)
+
+[CONTRIBUTING.md](CONTRIBUTING.md)를 먼저 읽어주세요.
+
+- 커밋 메시지: [Conventional Commits](https://www.conventionalcommits.org/) 형식 사용
+- 코드 주석: 한국어로 작성
+- 모든 소스 파일 상단에 AGPL-3.0 헤더 포함 필수
+
+---
+
+## 라이선스 (License)
+
+**AGPL-3.0-or-later** — [LICENSE](LICENSE)
+
+Copyright (C) 2025 minsu18 <https://github.com/minsu18>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+> 듀얼 라이선싱(상업용 라이선스)은 미래 옵션으로 유지됩니다.
+> Commercial licensing is reserved as a future option.

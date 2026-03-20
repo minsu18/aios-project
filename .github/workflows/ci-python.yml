@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2025 minsu18 <https://github.com/minsu18>
+# Project : AI-OS — https://github.com/minsu18/aios-project
+#
+# Python Intent Engine CI 워크플로우
+
+name: CI — Python Intent Engine
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "python/**"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "python/**"
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v3
+
+      - name: 의존성 설치
+        working-directory: python
+        run: uv pip install -e ".[dev]" --system
+
+      - name: 타입 체크 (mypy)
+        working-directory: python
+        run: uv run mypy intent_engine/ --strict
+
+      - name: 린트 (ruff)
+        working-directory: python
+        run: uv run ruff check intent_engine/
+
+      - name: 단위 테스트 (pytest)
+        working-directory: python
+        run: uv run pytest tests/ -v --tb=short
+
+      - name: 모듈 직접 실행 테스트
+        working-directory: python
+        run: python -m intent_engine.parser
